@@ -27,8 +27,9 @@ def _default_rhwp_extract_command(project_root: Path) -> str | None:
 
 def load_settings() -> Settings:
     project_root = Path(__file__).resolve().parent.parent
+    default_workspace = Path.home()
     allowed_workspace = Path(
-        os.getenv("MASTER_OF_HWP_ALLOWED_WORKSPACE", str(project_root))
+        os.getenv("MASTER_OF_HWP_ALLOWED_WORKSPACE", str(default_workspace))
     ).expanduser().resolve()
     rhwp_extract_command = os.getenv("RHWP_EXTRACT_COMMAND") or _default_rhwp_extract_command(
         project_root

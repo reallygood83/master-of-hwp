@@ -11,8 +11,8 @@
       <header class="hero">
         <div>
           <p class="eyebrow">master-of-hwp</p>
-          <h1>HWP/HWPX AI 편집 코어 로컬 GUI</h1>
-          <p class="subtitle">CLI 없이도 로컬에서 열기, 읽기, 구조 확인, 문단 편집, 저장까지 직접 검증할 수 있는 얇은 GUI 쉘</p>
+          <h1>HWP/HWPX AI 작업 패널</h1>
+          <p class="subtitle">문서를 열어두고 읽기, 구조 확인, 문단 편집, 저장까지 빠르게 검증하는 로컬 워크벤치</p>
         </div>
         <button id="refreshStatus" class="secondary">상태 새로고침</button>
       </header>
@@ -34,7 +34,25 @@
 
       <main class="layout">
         <section class="card controls">
-          <h2>문서 열기</h2>
+          <div class="section-header">
+            <h2>1. 로컬 문서 찾기</h2>
+            <p class="hint">내 컴퓨터의 HWP/HWPX/TXT/MD 문서를 찾아서 바로 열 수 있다.</p>
+          </div>
+          <label>
+            탐색 경로
+            <input id="browsePath" type="text" value="/Users/moon" />
+          </label>
+          <div class="actions three">
+            <button id="browseBtn">폴더 보기</button>
+            <button id="goParentBtn" class="secondary">상위 폴더</button>
+            <button id="usePathBtn" class="secondary">현재 경로 사용</button>
+          </div>
+          <div id="browserPane" class="browser-pane">파일 목록을 불러오는 중...</div>
+
+          <div class="section-header top-gap">
+            <h2>2. 문서 열기</h2>
+            <p class="hint">아래 경로는 열기 대상이다. 파일 브라우저에서 클릭하면 자동으로 채워진다.</p>
+          </div>
           <label>
             파일 경로
             <input id="pathInput" type="text" value="/Users/moon/Desktop/master-of-hwp/samples/public-official/table-vpos-01.hwpx" />
@@ -45,12 +63,19 @@
           </label>
           <button id="openBtn">문서 열기</button>
 
+          <div class="section-header top-gap">
+            <h2>3. 빠른 읽기</h2>
+            <p class="hint">텍스트와 구조를 추출해서 현재 문서가 어떤 상태인지 파악한다.</p>
+          </div>
           <div class="actions">
             <button id="textBtn" class="secondary">텍스트 추출</button>
             <button id="structureBtn" class="secondary">구조 추출</button>
           </div>
 
-          <h2>문단 편집</h2>
+          <div class="section-header top-gap">
+            <h2>4. 문단 편집</h2>
+            <p class="hint">지금은 문단 단위 치환/삽입이 가장 안정적이다.</p>
+          </div>
           <label>
             대상 문단 인덱스
             <input id="paragraphIndex" type="number" value="5" />
@@ -67,7 +92,10 @@
           </label>
           <button id="insertBtn">문단 삽입</button>
 
-          <h2>저장/검증</h2>
+          <div class="section-header top-gap">
+            <h2>5. 저장/검증</h2>
+            <p class="hint">수정 결과를 새 파일로 저장하고 다시 읽을 수 있는지 검증한다.</p>
+          </div>
           <label>
             저장 경로
             <input id="savePath" type="text" value="/Users/moon/Desktop/master-of-hwp/outputs/gui_saved.hwpx" />
@@ -80,7 +108,10 @@
 
         <section class="card output">
           <div class="output-header">
-            <h2>결과</h2>
+            <div>
+              <h2>결과 / 문서 상태</h2>
+              <p class="hint inline">현재는 시각적 렌더링보다 실제 백엔드 결과를 정확히 확인하는 데 초점을 둔다.</p>
+            </div>
             <button id="clearBtn" class="ghost">지우기</button>
           </div>
           <pre id="outputPane">아직 실행 결과가 없습니다.</pre>

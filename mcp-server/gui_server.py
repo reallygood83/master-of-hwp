@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+from config import SETTINGS
 from tools.extract_document_structure import extract_document_structure_tool
 from tools.extract_document_text import extract_document_text_tool
 from tools.insert_paragraph_after import insert_paragraph_after_tool
@@ -21,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 GUI_DIR = PROJECT_ROOT / "gui"
 HOST = os.getenv("MASTER_OF_HWP_GUI_HOST", "127.0.0.1")
 PORT = int(os.getenv("MASTER_OF_HWP_GUI_PORT", "8876"))
+ALLOWED_EXTENSIONS = {".hwp", ".hwpx", ".txt", ".md"}
 
 
 class GUIHandler(BaseHTTPRequestHandler):
@@ -32,6 +34,7 @@ class GUIHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "integration": rhwp_integration_status_tool(),
                     "save": rhwp_save_status_tool(),
+                    "allowed_workspace": str(SETTINGS.allowed_workspace),
                 }
             )
             return
@@ -50,6 +53,7 @@ class GUIHandler(BaseHTTPRequestHandler):
             return
 
         routes = {
+            "/api/browse": self._browse,
             "/api/open": lambda data: open_document_tool(
                 path=str(data.get("path", "")),
                 readonly=bool(data.get("readonly", False)),
@@ -96,6 +100,37 @@ class GUIHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: object) -> None:
         return
+
+    def _browse(self, data: dict[str, object]) -> dict[str, object]:
+        requested = str(data.get("path") or SETTINGS.allowed_workspace)
+        candidate = Path(requested).expanduser().resolve()
+        try:
+            _ = candidate.relative_to(SETTINGS.allowed_workspace)
+        except ValueError:
+            candidate = SETTINGS.allowed_workspace
+        if candidate.is_file():
+            candidate = candidate.parent
+        if not candidate.exists() or not candidate.is_dir():
+            candidate = SETTINGS.allowed_workspace
+
+        parent = candidate.parent if candidate != SETTINGS.allowed_workspace else candidate
+        entries: list[dict[str, object]] = []
+        for child in sorted(candidate.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+            if child.is_dir():
+                entries.append({"name": child.name, "path": str(child), "type": "dir"})
+                continue
+            if child.suffix.lower() in ALLOWED_EXTENSIONS:
+                entries.append({"name": child.name, "path": str(child), "type": "file"})
+
+        return {
+            "ok": True,
+            "message": "directory listed",
+            "data": {
+                "current_path": str(candidate),
+                "parent_path": str(parent),
+                "entries": entries,
+            },
+        }
 
     def _read_json_body(self) -> dict[str, object] | None:
         try:

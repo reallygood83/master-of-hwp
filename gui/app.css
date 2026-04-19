@@ -22,8 +22,8 @@ body {
 }
 
 .shell {
-  width: min(1440px, calc(100vw - 48px));
-  margin: 32px auto 48px;
+  width: min(1500px, calc(100vw - 40px));
+  margin: 28px auto 40px;
 }
 
 .hero, .status-grid, .layout { display: grid; gap: 20px; }
@@ -44,11 +44,14 @@ body {
   font-size: clamp(34px, 5vw, 54px);
   line-height: 1.02;
 }
-.subtitle {
-  margin: 12px 0 0;
-  max-width: 880px;
+.subtitle, .hint {
+  margin: 10px 0 0;
   color: var(--muted);
-  line-height: 1.6;
+  line-height: 1.55;
+}
+.hint.inline {
+  margin-top: 4px;
+  font-size: 13px;
 }
 
 .status-grid {
@@ -56,7 +59,7 @@ body {
   margin-bottom: 20px;
 }
 .layout {
-  grid-template-columns: minmax(360px, 430px) 1fr;
+  grid-template-columns: minmax(420px, 520px) 1fr;
   align-items: start;
 }
 .card {
@@ -67,7 +70,7 @@ body {
 }
 .status-card, .controls, .output { padding: 22px; }
 .status-card h2, .controls h2, .output h2 {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   font-size: 16px;
 }
 .status-card p {
@@ -78,6 +81,9 @@ body {
 .controls {
   display: grid;
   gap: 16px;
+}
+.section-header.top-gap {
+  margin-top: 8px;
 }
 label {
   display: grid;
@@ -123,22 +129,50 @@ button.ghost {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+.actions.three {
+  grid-template-columns: repeat(3, 1fr);
+}
 .checkbox-row {
   grid-template-columns: auto 1fr;
   align-items: center;
 }
+.browser-pane {
+  border: 1px solid var(--line);
+  background: #0a0f14;
+  border-radius: 14px;
+  padding: 10px;
+  max-height: 280px;
+  overflow: auto;
+}
+.browser-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+.browser-entry:hover {
+  background: rgba(87, 199, 255, 0.08);
+}
+.browser-entry small {
+  color: var(--muted);
+}
 .output {
-  min-height: 720px;
+  min-height: 760px;
 }
 .output-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: start;
   margin-bottom: 12px;
+  gap: 12px;
 }
 #outputPane {
   margin: 0;
-  min-height: 640px;
+  min-height: 680px;
   padding: 16px;
   border-radius: 14px;
   border: 1px solid var(--line);
@@ -150,7 +184,7 @@ button.ghost {
 }
 
 @media (max-width: 1100px) {
-  .status-grid, .layout, .hero {
+  .status-grid, .layout, .hero, .actions, .actions.three {
     grid-template-columns: 1fr;
   }
 }

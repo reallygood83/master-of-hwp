@@ -1,4 +1,4 @@
-const state = { documentId: '' };
+const state = { documentId: '', browserPath: '/Users/moon' };
 
 const els = {
   readinessText: document.getElementById('readinessText'),
@@ -6,12 +6,17 @@ const els = {
   sessionText: document.getElementById('sessionText'),
   outputPane: document.getElementById('outputPane'),
   pathInput: document.getElementById('pathInput'),
+  browsePath: document.getElementById('browsePath'),
+  browserPane: document.getElementById('browserPane'),
   readonlyToggle: document.getElementById('readonlyToggle'),
   paragraphIndex: document.getElementById('paragraphIndex'),
   replaceText: document.getElementById('replaceText'),
   insertText: document.getElementById('insertText'),
   savePath: document.getElementById('savePath'),
   refreshStatus: document.getElementById('refreshStatus'),
+  browseBtn: document.getElementById('browseBtn'),
+  goParentBtn: document.getElementById('goParentBtn'),
+  usePathBtn: document.getElementById('usePathBtn'),
   openBtn: document.getElementById('openBtn'),
   textBtn: document.getElementById('textBtn'),
   structureBtn: document.getElementById('structureBtn'),
@@ -39,13 +44,54 @@ function updateSessionText() {
   els.sessionText.textContent = state.documentId ? `열린 문서: ${state.documentId}` : '열린 문서 없음';
 }
 
+function renderBrowser(entries, currentPath, parentPath) {
+  state.browserPath = currentPath;
+  els.browsePath.value = currentPath;
+  els.browserPane.innerHTML = '';
+
+  const parent = document.createElement('div');
+  parent.className = 'browser-entry';
+  parent.innerHTML = `<strong>⬆ 상위 폴더</strong><small>${parentPath}</small>`;
+  parent.addEventListener('click', () => browse(parentPath));
+  els.browserPane.appendChild(parent);
+
+  for (const entry of entries) {
+    const row = document.createElement('div');
+    row.className = 'browser-entry';
+    const icon = entry.type === 'dir' ? '📁' : '📄';
+    row.innerHTML = `<strong>${icon} ${entry.name}</strong><small>${entry.path}</small>`;
+    row.addEventListener('click', () => {
+      if (entry.type === 'dir') {
+        browse(entry.path);
+        return;
+      }
+      els.pathInput.value = entry.path;
+      if (!els.savePath.value || els.savePath.value.includes('gui_saved')) {
+        const ext = entry.path.endsWith('.hwp') ? '.hwp' : entry.path.endsWith('.hwpx') ? '.hwpx' : '.txt';
+        els.savePath.value = entry.path.replace(ext, `.gui-edited${ext}`);
+      }
+      renderOutput('FILE_SELECTED', entry);
+    });
+    els.browserPane.appendChild(row);
+  }
+}
+
+async function browse(path = state.browserPath) {
+  const payload = await postJson('/api/browse', { path });
+  if (!payload.ok) {
+    renderOutput('BROWSE_FAILED', payload);
+    return;
+  }
+  renderBrowser(payload.data.entries, payload.data.current_path, payload.data.parent_path);
+}
+
 async function refreshStatus() {
   const res = await fetch('/api/status');
   const payload = await res.json();
   const integration = payload.integration?.data || {};
   const save = payload.save?.data || {};
   els.readinessText.textContent = integration.ready
-    ? `읽기 준비 완료 · command preview ${integration.command_preview?.length || 0}개 요소`
+    ? `읽기 준비 완료 · workspace ${payload.allowed_workspace}`
     : '읽기 엔진 준비 안 됨';
   els.saveText.textContent = save.ready
     ? '저장 엔진 준비 완료'
@@ -113,6 +159,12 @@ async function validateDocument() {
 }
 
 els.refreshStatus.addEventListener('click', refreshStatus);
+els.browseBtn.addEventListener('click', () => browse(els.browsePath.value));
+els.goParentBtn.addEventListener('click', () => browse(state.browserPath.split('/').slice(0, -1).join('/') || '/'));
+els.usePathBtn.addEventListener('click', () => {
+  els.pathInput.value = els.browsePath.value;
+  renderOutput('PATH_SELECTED', { path: els.pathInput.value });
+});
 els.openBtn.addEventListener('click', openDocument);
 els.textBtn.addEventListener('click', extractText);
 els.structureBtn.addEventListener('click', extractStructure);
@@ -126,3 +178,4 @@ els.clearBtn.addEventListener('click', () => {
 
 updateSessionText();
 refreshStatus();
+browse('/Users/moon');
