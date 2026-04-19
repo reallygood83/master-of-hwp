@@ -1,0 +1,114 @@
+{
+  "version": "2.0",
+  "lastUpdated": "2026-04-19T14:04:51.230Z",
+  "activeFeatures": [
+    "bridges",
+    "mcp-server",
+    "tests"
+  ],
+  "primaryFeature": "tests",
+  "features": {
+    "bridges": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-04-19T13:11:27.244Z",
+        "lastUpdated": "2026-04-19T13:12:46.232Z"
+      }
+    },
+    "mcp-server": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-04-19T13:52:36.170Z",
+        "lastUpdated": "2026-04-19T13:52:36.170Z"
+      }
+    },
+    "tests": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-04-19T14:04:20.273Z",
+        "lastUpdated": "2026-04-19T14:04:51.229Z"
+      }
+    }
+  },
+  "pipeline": {
+    "currentPhase": 1,
+    "level": "Dynamic",
+    "phaseHistory": []
+  },
+  "session": {
+    "startedAt": "2026-04-19T12:20:35.944Z",
+    "onboardingCompleted": false,
+    "lastActivity": "2026-04-19T14:04:51.230Z"
+  },
+  "history": [
+    {
+      "timestamp": "2026-04-19T13:11:27.244Z",
+      "feature": "bridges",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-19T13:11:38.960Z",
+      "feature": "bridges",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-19T13:12:28.633Z",
+      "feature": "bridges",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-19T13:12:33.780Z",
+      "feature": "bridges",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-19T13:12:46.232Z",
+      "feature": "bridges",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-19T13:52:36.170Z",
+      "feature": "mcp-server",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-19T14:04:20.273Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-19T14:04:33.175Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-19T14:04:51.229Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    }
+  ]
+}

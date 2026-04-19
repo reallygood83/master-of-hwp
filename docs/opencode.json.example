@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "master-of-hwp": {
+      "type": "local",
+      "command": ["/Users/moon/Desktop/master-of-hwp/scripts/run_mcp_server.sh"],
+      "enabled": true,
+      "environment": {}
+    }
+  }
+}
