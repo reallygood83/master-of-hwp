@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>master-of-hwp GUI</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">master-of-hwp</p>
+          <h1>HWP/HWPX AI 편집 코어 로컬 GUI</h1>
+          <p class="subtitle">CLI 없이도 로컬에서 열기, 읽기, 구조 확인, 문단 편집, 저장까지 직접 검증할 수 있는 얇은 GUI 쉘</p>
+        </div>
+        <button id="refreshStatus" class="secondary">상태 새로고침</button>
+      </header>
+
+      <section class="status-grid">
+        <article class="card status-card">
+          <h2>읽기 엔진</h2>
+          <p id="readinessText">확인 중...</p>
+        </article>
+        <article class="card status-card">
+          <h2>저장 엔진</h2>
+          <p id="saveText">확인 중...</p>
+        </article>
+        <article class="card status-card">
+          <h2>현재 세션</h2>
+          <p id="sessionText">열린 문서 없음</p>
+        </article>
+      </section>
+
+      <main class="layout">
+        <section class="card controls">
+          <h2>문서 열기</h2>
+          <label>
+            파일 경로
+            <input id="pathInput" type="text" value="/Users/moon/Desktop/master-of-hwp/samples/public-official/table-vpos-01.hwpx" />
+          </label>
+          <label class="checkbox-row">
+            <input id="readonlyToggle" type="checkbox" />
+            읽기 전용으로 열기
+          </label>
+          <button id="openBtn">문서 열기</button>
+
+          <div class="actions">
+            <button id="textBtn" class="secondary">텍스트 추출</button>
+            <button id="structureBtn" class="secondary">구조 추출</button>
+          </div>
+
+          <h2>문단 편집</h2>
+          <label>
+            대상 문단 인덱스
+            <input id="paragraphIndex" type="number" value="5" />
+          </label>
+          <label>
+            치환 텍스트
+            <textarea id="replaceText">□ master-of-hwp GUI에서 수정한 문단입니다.</textarea>
+          </label>
+          <button id="replaceBtn">문단 치환</button>
+
+          <label>
+            삽입 텍스트
+            <textarea id="insertText">○ GUI에서 추가한 문단입니다.</textarea>
+          </label>
+          <button id="insertBtn">문단 삽입</button>
+
+          <h2>저장/검증</h2>
+          <label>
+            저장 경로
+            <input id="savePath" type="text" value="/Users/moon/Desktop/master-of-hwp/outputs/gui_saved.hwpx" />
+          </label>
+          <div class="actions">
+            <button id="saveBtn">저장</button>
+            <button id="validateBtn" class="secondary">저장본 검증</button>
+          </div>
+        </section>
+
+        <section class="card output">
+          <div class="output-header">
+            <h2>결과</h2>
+            <button id="clearBtn" class="ghost">지우기</button>
+          </div>
+          <pre id="outputPane">아직 실행 결과가 없습니다.</pre>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
