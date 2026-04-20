@@ -35,6 +35,9 @@ jobs:
       - name: Black format check
         run: black --check master_of_hwp tests
 
+      - name: Mypy type check
+        run: mypy master_of_hwp
+
       - name: Run tests
         run: pytest --cov=master_of_hwp --cov-report=term-missing -m "not fidelity or fidelity"
 

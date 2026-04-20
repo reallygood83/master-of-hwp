@@ -6,6 +6,7 @@ import re
 from io import BytesIO
 
 import olefile
+from olefile.olefile import OleFileError
 
 _SECTION_NAME_PATTERN = re.compile(r"Section\d+")
 
@@ -44,7 +45,7 @@ def count_sections(raw_bytes: bytes) -> int:
             )
     except OSError as exc:
         raise Hwp5FormatError(f"Failed to read HWP 5.0 compound file: {exc}") from exc
-    except olefile.OleFileError as exc:
+    except OleFileError as exc:
         raise Hwp5FormatError(f"Invalid HWP 5.0 compound structure: {exc}") from exc
 
     if section_count < 1:
