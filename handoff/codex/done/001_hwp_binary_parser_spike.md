@@ -2,7 +2,7 @@
 id: 001
 from: claude
 to: codex
-status: in_progress
+status: done
 created: 2026-04-21
 priority: high
 ---
