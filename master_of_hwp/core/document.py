@@ -186,3 +186,38 @@ class HwpDocument:
         if self.source_format is SourceFormat.HWPX:
             return _hwpx_paragraphs(self.raw_bytes)
         raise AssertionError(f"Unhandled source_format: {self.source_format!r}")
+
+    @property
+    def section_tables(self) -> list[list[list[list[list[str]]]]]:
+        """Tables per section as a 5-level nested list.
+
+        Returns:
+            `[section][table][row][cell][paragraph]`. Outermost length
+            equals `sections_count`. Each cell is itself a list of
+            paragraph strings (reusing the paragraph enumeration
+            contract). Sections with no tables return an empty list
+            (never a placeholder structure).
+
+        Raises:
+            master_of_hwp.adapters.hwp5_reader.Hwp5FormatError:
+                If the HWP 5.0 binary cannot be parsed.
+            master_of_hwp.adapters.hwpx_reader.HwpxFormatError:
+                If the HWPX container is malformed.
+
+        Notes:
+            HWP 5.0 table extraction is currently a minimal heuristic
+            anchored on the `TABLE(0x5B)` record; exact row/cell
+            recovery is pending a richer record-level parser.
+        """
+        from master_of_hwp.adapters.hwp5_reader import (
+            extract_section_tables as _hwp5_tables,
+        )
+        from master_of_hwp.adapters.hwpx_reader import (
+            extract_section_tables as _hwpx_tables,
+        )
+
+        if self.source_format is SourceFormat.HWP:
+            return _hwp5_tables(self.raw_bytes)
+        if self.source_format is SourceFormat.HWPX:
+            return _hwpx_tables(self.raw_bytes)
+        raise AssertionError(f"Unhandled source_format: {self.source_format!r}")
