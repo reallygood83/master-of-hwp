@@ -1,0 +1,77 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "master-of-hwp"
+version = "0.0.1"
+description = "Open-source platform for safe, AI-assisted editing of Korean HWP documents"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "moon", email = "jpmjkim23@gmail.com" },
+]
+keywords = ["hwp", "hwpx", "hancom", "korean", "ai", "llm", "document"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: Korean",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business",
+    "Topic :: Text Processing",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "hypothesis>=6.100",
+    "ruff>=0.4",
+    "black>=24.0",
+    "mypy>=1.10",
+]
+mcp = [
+    "fastmcp>=3.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/reallygood83/master-of-hwp"
+Repository = "https://github.com/reallygood83/master-of-hwp"
+Documentation = "https://github.com/reallygood83/master-of-hwp/tree/main/docs"
+Issues = "https://github.com/reallygood83/master-of-hwp/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["master_of_hwp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: fast isolated unit tests",
+    "integration: tests that cross module boundaries",
+    "fidelity: round-trip fidelity benchmarks (may require samples/)",
+    "property: property-based tests via Hypothesis",
+]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RET"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true

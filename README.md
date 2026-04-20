@@ -1,6 +1,12 @@
 # master-of-hwp
 
-> **AI가 한컴오피스 문서(.hwp / .hwpx)를 읽고, 구조를 이해하고, 안전하게 편집·저장하도록 돕는 MCP 서버**
+> ⚠️ **Phase 0 — Core API 추출 중 (v0.0.x)**
+> 에디터(rhwp-studio)는 **Feature Freeze** 상태입니다. 현재 모든 에너지는 파이썬 Core API(`master_of_hwp`)의 PyPI 배포 가능한 수준까지의 안정화에 집중되어 있습니다.
+> 자세한 방향은 [docs/ROADMAP.md](docs/ROADMAP.md)와 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)에서 확인하세요.
+
+---
+
+> **AI가 한컴오피스 문서(.hwp / .hwpx)를 읽고, 구조를 이해하고, 안전하게 편집·저장하도록 돕는 오픈소스 플랫폼**
 
 `master-of-hwp`는 Claude Code·Claude Desktop·기타 MCP 호환 AI 클라이언트가 한국어 공공/교육/업무용 한글 문서를 **실제 파일 포맷 그대로** 읽고 수정할 수 있게 해 주는 오픈소스 프로젝트입니다. 핵심 편집 엔진으로는 Rust + WebAssembly 기반의 [`@rhwp/core`](https://www.npmjs.com/package/@rhwp/core) 라이브러리를 사용하고, Python으로 작성된 [FastMCP](https://github.com/jlowin/fastmcp) 서버가 이를 감싸 AI가 호출 가능한 도구로 노출합니다.
 
