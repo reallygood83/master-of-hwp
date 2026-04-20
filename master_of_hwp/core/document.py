@@ -157,3 +157,32 @@ class HwpDocument:
         if self.source_format is SourceFormat.HWPX:
             return _hwpx_extract(self.raw_bytes)
         raise AssertionError(f"Unhandled source_format: {self.source_format!r}")
+
+    @property
+    def section_paragraphs(self) -> list[list[str]]:
+        """Paragraphs of each section, as nested lists.
+
+        Returns:
+            Outer list: one entry per section; `len == sections_count`.
+            Inner list: one string per paragraph. HWP 5.0 paragraph
+            terminators (`\\r`) are stripped; HWPX preserves empty
+            paragraphs as `""` to retain layout intent.
+
+        Raises:
+            master_of_hwp.adapters.hwp5_reader.Hwp5FormatError:
+                If the HWP 5.0 binary cannot be parsed.
+            master_of_hwp.adapters.hwpx_reader.HwpxFormatError:
+                If the HWPX container is malformed.
+        """
+        from master_of_hwp.adapters.hwp5_reader import (
+            extract_section_paragraphs as _hwp5_paragraphs,
+        )
+        from master_of_hwp.adapters.hwpx_reader import (
+            extract_section_paragraphs as _hwpx_paragraphs,
+        )
+
+        if self.source_format is SourceFormat.HWP:
+            return _hwp5_paragraphs(self.raw_bytes)
+        if self.source_format is SourceFormat.HWPX:
+            return _hwpx_paragraphs(self.raw_bytes)
+        raise AssertionError(f"Unhandled source_format: {self.source_format!r}")
