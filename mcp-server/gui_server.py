@@ -93,6 +93,7 @@ class GUIHandler(BaseHTTPRequestHandler):
                 selection=data.get("selection") if isinstance(data.get("selection"), dict) else {},
                 task_type=str(data.get("task_type", "rewrite")),
                 instruction=str(data.get("instruction", "")),
+                document_id=str(data.get("document_id", "")),
             ),
             "/api/ai/apply": lambda data: ai_apply_tool(
                 document_id=str(data.get("document_id", "")),

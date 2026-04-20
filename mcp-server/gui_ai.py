@@ -1,12 +1,76 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from cli_wrappers import ProviderRouterError, run_provider_json
-from orchestration.prompt_builder import build_paragraph_ai_prompt
+from orchestration.prompt_builder import (
+    build_contextual_selection_prompt,
+    build_paragraph_ai_prompt,
+)
 from orchestration.response_mapper import map_ai_preview
 from tools.extract_document_structure import extract_document_structure_tool
 from tools.insert_paragraph_after import insert_paragraph_after_tool
 from tools.replace_paragraph_text import replace_paragraph_text_tool
 from tools.replace_selection_text import replace_selection_text_tool
+
+CONTEXT_WINDOW_BEFORE = 6
+CONTEXT_WINDOW_AFTER = 4
+CONTEXT_CHAR_BUDGET = 1800
+
+
+def _trim_context(paragraphs: list[str], limit: int) -> list[str]:
+    """Trim from the far end until total char count fits the budget."""
+    total = sum(len(p) for p in paragraphs)
+    trimmed = list(paragraphs)
+    while trimmed and total > limit:
+        removed = trimmed.pop(0)
+        total -= len(removed)
+    return trimmed
+
+
+def _gather_selection_context(
+    document_id: str, selection: dict[str, object]
+) -> tuple[str, list[str], list[str]]:
+    """Return (document_title, previous_paragraphs, following_paragraphs)."""
+    if not document_id:
+        return "", [], []
+    structure = extract_document_structure_tool(document_id=document_id)
+    if not structure.get("ok"):
+        return "", [], []
+    data = structure.get("data")
+    if not isinstance(data, dict):
+        return "", [], []
+    paragraphs = data.get("paragraphs")
+    if not isinstance(paragraphs, list):
+        return "", [], []
+
+    title = str(data.get("path") or data.get("file_name") or "")
+    if title:
+        title = Path(title).name
+
+    start = selection.get("start") if isinstance(selection.get("start"), dict) else {}
+    end = selection.get("end") if isinstance(selection.get("end"), dict) else {}
+    start_idx = int(start.get("paragraphIndex", selection.get("paragraph_index", 0)) or 0)
+    end_idx = int(end.get("paragraphIndex", start_idx) or start_idx)
+
+    def _text_at(i: int) -> str:
+        if 0 <= i < len(paragraphs) and isinstance(paragraphs[i], dict):
+            return str(paragraphs[i].get("text", "")).strip()
+        return ""
+
+    prev_paragraphs = [
+        _text_at(i)
+        for i in range(max(0, start_idx - CONTEXT_WINDOW_BEFORE), start_idx)
+    ]
+    next_paragraphs = [
+        _text_at(i)
+        for i in range(end_idx + 1, min(len(paragraphs), end_idx + 1 + CONTEXT_WINDOW_AFTER))
+    ]
+    # Split budget roughly 60/40 between before/after
+    prev_paragraphs = _trim_context(prev_paragraphs, int(CONTEXT_CHAR_BUDGET * 0.6))
+    next_paragraphs = _trim_context(list(reversed(next_paragraphs)), int(CONTEXT_CHAR_BUDGET * 0.4))
+    next_paragraphs = list(reversed(next_paragraphs))
+    return title, prev_paragraphs, next_paragraphs
 
 
 def ai_preview_tool(provider: str, document_id: str, paragraph_index: int, task_type: str, instruction: str) -> dict[str, object]:
@@ -65,7 +129,13 @@ def ai_preview_tool(provider: str, document_id: str, paragraph_index: int, task_
     return mapped
 
 
-def ai_selection_preview_tool(provider: str, selection: dict[str, object], task_type: str, instruction: str) -> dict[str, object]:
+def ai_selection_preview_tool(
+    provider: str,
+    selection: dict[str, object],
+    task_type: str,
+    instruction: str,
+    document_id: str = "",
+) -> dict[str, object]:
     selected_text = str(selection.get("text", "")).strip()
     if not selected_text:
         return {
@@ -74,10 +144,17 @@ def ai_selection_preview_tool(provider: str, selection: dict[str, object], task_
             "error_code": "EMPTY_SELECTION",
         }
 
-    prompt = build_paragraph_ai_prompt(
+    title, prev_paragraphs, next_paragraphs = _gather_selection_context(
+        document_id=document_id, selection=selection
+    )
+
+    prompt = build_contextual_selection_prompt(
         task_type=task_type,
         instruction=instruction,
-        paragraph_text=selected_text,
+        selected_text=selected_text,
+        document_title=title,
+        previous_paragraphs=prev_paragraphs,
+        following_paragraphs=next_paragraphs,
     )
 
     try:

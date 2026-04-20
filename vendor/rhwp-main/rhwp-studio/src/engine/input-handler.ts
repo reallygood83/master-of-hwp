@@ -876,7 +876,7 @@ export class InputHandler {
   ): boolean {
     try {
       const bbox = this.wasm.getTableBBox(sec, ppi, ci);
-      const tolerance = 5; // 페이지 좌표 기준 px
+      const tolerance = 8; // 페이지 좌표 기준 px (5→8: 표 객체 선택 히트박스 확장)
       const nearLeft = Math.abs(pageX - bbox.x) <= tolerance;
       const nearRight = Math.abs(pageX - (bbox.x + bbox.width)) <= tolerance;
       const nearTop = Math.abs(pageY - bbox.y) <= tolerance;
@@ -1506,6 +1506,45 @@ export class InputHandler {
           start.paragraphIndex, start.charOffset,
           end.paragraphIndex, end.charOffset,
         );
+        // 선택 범위가 본문 문단을 가로지르면서 중간에 표가 있을 수 있다.
+        // 표 셀 내용도 시각적으로 선택된 것처럼 표시해 Cmd+A "전체 선택" 의도를 반영한다.
+        // (기능적 copy/delete는 본문만 영향 — 표 내용은 별도 처리 필요. 시각 피드백 개선 목적)
+        if (end.paragraphIndex > start.paragraphIndex || end.charOffset - start.charOffset > 0) {
+          try {
+            const sec = start.sectionIndex;
+            let searchPara = start.paragraphIndex;
+            let searchOffset = start.charOffset;
+            // 무한루프 방지 가드
+            for (let iter = 0; iter < 1000; iter++) {
+              const result = this.wasm.findNearestControlForward(sec, searchPara, searchOffset);
+              if (!result || result.type === 'none') break;
+              const rp = (result as any).para;
+              const rChar = (result as any).charPos ?? 0;
+              // 종료 조건: 선택 범위를 벗어남
+              if (rp > end.paragraphIndex) break;
+              if (rp === end.paragraphIndex && rChar >= end.charOffset) break;
+              if (result.type === 'table') {
+                try {
+                  const cellBboxes = this.wasm.getTableCellBboxes(sec, rp, (result as any).ci);
+                  for (const b of cellBboxes) {
+                    rects.push({
+                      pageIndex: b.pageIndex,
+                      x: b.x, y: b.y,
+                      width: (b as any).w, height: (b as any).h,
+                    });
+                  }
+                } catch { /* 표 bbox 조회 실패 무시 */ }
+              }
+              // 다음 컨트롤 탐색을 위해 포지션 전진
+              if (rp === searchPara && rChar + 1 <= searchOffset) {
+                searchOffset++;
+              } else {
+                searchPara = rp;
+                searchOffset = rChar + 1;
+              }
+            }
+          } catch { /* 전체 선택 보조 렌더 실패 무시 */ }
+        }
       } else {
         // 셀↔본문 또는 셀↔다른 셀 혼합 선택: 렌더링 생략
         this.selectionRenderer.clear();

@@ -1059,10 +1059,35 @@ export function onMouseMove(this: any, e: MouseEvent): void {
       this.dragRafId = 0;
       if (!this.isDragging) return;
       const hit = this.hitTestFromEvent(e);
-      if (hit && hit.paragraphIndex < 0xFFFFFF00) {
-        this.cursor.moveTo(hit);
-        this.updateCaret();
+      if (!hit || hit.paragraphIndex >= 0xFFFFFF00) return;
+
+      // 표 경계를 가로지르는 드래그를 자연스럽게 처리한다.
+      // anchor가 본문이고 현재 hit가 셀 안이면, 셀이 속한 본문 문단 위치로 스냅한다.
+      // → 선택 영역이 본문 범위로 유지되며, 표 내용은 시각적으로 포함된다(#14 보강).
+      const selSnap = this.cursor.getSelection();
+      const anchorPos = selSnap?.anchor;
+      const anchorInCell = anchorPos?.parentParaIndex !== undefined;
+      const hitInCell = hit.parentParaIndex !== undefined;
+      let coerced = hit;
+      if (anchorPos && !anchorInCell && hitInCell) {
+        const parentPara = hit.parentParaIndex as number;
+        const anchorPara = anchorPos.paragraphIndex;
+        if (parentPara >= anchorPara) {
+          // 앞으로 드래그: 표 다음 본문 위치(parentPara 끝)로 스냅
+          try {
+            const paraLen = this.wasm.getParagraphLength(hit.sectionIndex, parentPara);
+            coerced = { sectionIndex: hit.sectionIndex, paragraphIndex: parentPara, charOffset: paraLen } as any;
+          } catch {
+            coerced = { sectionIndex: hit.sectionIndex, paragraphIndex: parentPara, charOffset: 0 } as any;
+          }
+        } else {
+          // 뒤로 드래그: 표 앞쪽 본문 위치로 스냅
+          coerced = { sectionIndex: hit.sectionIndex, paragraphIndex: parentPara, charOffset: 0 } as any;
+        }
       }
+
+      this.cursor.moveTo(coerced);
+      this.updateCaret();
     });
     return;
   }
@@ -1197,8 +1222,10 @@ export function handleResizeHover(this: any, e: MouseEvent): void {
 
   // hitTest로 표 셀 위인지 확인
   let tableRef: { sec: number; ppi: number; ci: number } | null = null;
+  let lastHit: any = null;
   try {
     const hit = this.wasm.hitTest(pageIdx, pageX, pageY);
+    lastHit = hit;
     if (hit.parentParaIndex !== undefined && hit.controlIndex !== undefined && !hit.isTextBox) {
       tableRef = { sec: hit.sectionIndex, ppi: hit.parentParaIndex, ci: hit.controlIndex };
     }
@@ -1208,6 +1235,19 @@ export function handleResizeHover(this: any, e: MouseEvent): void {
     this.tableResizeRenderer.clear();
     this.cachedTableRef = null;
     this.cachedCellBboxes = null;
+    // 표 외곽 테두리 hover 감지: 클릭 가능한 힌트(pointer 커서) 제공
+    // → 사용자가 "표를 객체로 선택할 수 있다"는 affordance 인지 가능
+    let outerTableHover = false;
+    if (lastHit && typeof lastHit.paragraphIndex === 'number') {
+      try {
+        const t = this.findTableByOuterClick(pageX, pageY, lastHit.sectionIndex ?? 0, lastHit.paragraphIndex);
+        if (t) outerTableHover = true;
+      } catch { /* 무시 */ }
+    }
+    if (outerTableHover) {
+      this.container.style.cursor = 'pointer';
+      return;
+    }
     // 개체(도형/연결선) hover 감지: 커서 변경
     const picHit = this.findPictureAtClick(pageIdx, pageX, pageY);
     this.container.style.cursor = picHit ? 'pointer' : '';

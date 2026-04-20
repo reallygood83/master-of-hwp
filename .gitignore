@@ -39,3 +39,14 @@ outputs/edited_from_session.*
 # OS/editor
 .DS_Store
 .omx/
+
+# Playwright MCP test artifacts
+.playwright-mcp/
+
+# Internal planning/design documents (보안 — 공개 저장소 제외)
+/01_*.md
+/02_*.md
+/docs/RHWP_*.md
+/docs/CLI_*.md
+/docs/GUI_실행_가이드.md
+/docs/현재_*.md

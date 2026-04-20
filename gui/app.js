@@ -12,7 +12,16 @@ const state = {
   editorReqId: 0,
   pendingEditorReqs: new Map(),
   selection: null,
+  lastQuotedSelectionKey: null,
 };
+
+function selectionKey(sel) {
+  if (!sel?.hasSelection || !sel.start || !sel.end) return null;
+  return [
+    sel.start.sectionIndex, sel.start.paragraphIndex, sel.start.charOffset,
+    sel.end.sectionIndex, sel.end.paragraphIndex, sel.end.charOffset,
+  ].join(':');
+}
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -33,6 +42,7 @@ const els = {
   pathInput: $('pathInput'),
   upBtn: $('upBtn'),
   goBtn: $('goBtn'),
+  newChatBtn: $('newChatBtn'),
 };
 
 async function api(path, body) {
@@ -89,24 +99,63 @@ function addBubble(role, text) {
   return div;
 }
 
+function renderTablePreviewHtml(table) {
+  if (!table || !Array.isArray(table.cells)) return '';
+  const rows = table.cells.map((row, rIdx) => {
+    const tag = rIdx === 0 ? 'th' : 'td';
+    const cellsHtml = row.map((c) => `<${tag}>${escapeHtml(String(c ?? ''))}</${tag}>`).join('');
+    return `<tr>${cellsHtml}</tr>`;
+  }).join('');
+  return `<table class="hwp-table-preview">${rows}</table>`;
+}
+
 function addPreviewCard(preview) {
   const providerLabel = preview.provider || currentProvider();
   const label = preview.selection ? '선택 영역' : `문단 ${preview.paragraph_index}`;
+  const isTable = preview.content_type === 'table' && preview.table;
+  const typeChip = isTable ? ' · <span class="type-chip">표</span>' : '';
   const card = document.createElement('div');
   card.className = 'preview-card';
+  const bodyHtml = isTable
+    ? renderTablePreviewHtml(preview.table)
+    : escapeHtml(preview.content || '');
   card.innerHTML = `
-    <div class="title">${escapeHtml(preview.title || 'AI 제안')} · ${label} · ${escapeHtml(providerLabel)}</div>
-    <div class="content">${escapeHtml(preview.content || '')}</div>
-    <div class="row">
-      <button class="btn primary apply-btn">적용</button>
-      <button class="btn cancel-btn">취소</button>
+    <div class="card-head">
+      <div class="title">${escapeHtml(preview.title || 'AI 제안')} · ${label} · ${escapeHtml(providerLabel)}${typeChip}</div>
+      <div class="card-actions">
+        <button class="chip-btn copy-btn" title="클립보드로 복사">📋 복사</button>
+        <button class="chip-btn insert-btn" title="문서에 바로 삽입">📥 삽입</button>
+      </div>
+    </div>
+    <div class="content ${isTable ? 'content-table' : ''}">${bodyHtml}</div>
+    <div class="row tertiary">
+      <button class="btn link cancel-btn">닫기</button>
     </div>
   `;
   els.chatLog.appendChild(card);
   els.chatLog.scrollTop = els.chatLog.scrollHeight;
 
-  card.querySelector('.apply-btn').addEventListener('click', async () => {
-    card.querySelector('.apply-btn').disabled = true;
+  const copyBtn = card.querySelector('.copy-btn');
+  const insertBtn = card.querySelector('.insert-btn');
+
+  copyBtn.addEventListener('click', async () => {
+    try {
+      const textPayload = isTable
+        ? preview.table.cells.map((row) => row.join('\t')).join('\n')
+        : (preview.content || '');
+      await navigator.clipboard.writeText(textPayload);
+      const orig = copyBtn.textContent;
+      copyBtn.textContent = '✓ 복사됨';
+      copyBtn.disabled = true;
+      setTimeout(() => { copyBtn.textContent = orig; copyBtn.disabled = false; }, 1500);
+    } catch (err) {
+      addBubble('error', `복사 실패: ${err.message}`);
+    }
+  });
+
+  insertBtn.addEventListener('click', async () => {
+    insertBtn.disabled = true;
+    insertBtn.textContent = '삽입 중...';
     const endpoint = preview.selection ? '/api/ai/apply-selection' : '/api/ai/apply';
     const payload = preview.selection
       ? {
@@ -124,13 +173,86 @@ function addPreviewCard(preview) {
     if (res.ok) {
       state.saved = false;
       els.saveBtn.disabled = false;
-      addBubble('system', `✓ ${preview.selection ? '선택 영역' : `문단 ${preview.paragraph_index}`}에 적용됨`);
+      let editorOk = true;
+      try {
+        if (preview.selection?.hasSelection) {
+          if (isTable) {
+            // 표 형태 결과: 선택 영역을 삭제 후 그 위치에 HWP 네이티브 표를 생성
+            await sendEditorRequest('applyEditTable', {
+              section: preview.selection.start.sectionIndex,
+              startPara: preview.selection.start.paragraphIndex,
+              endPara: preview.selection.end.paragraphIndex,
+              startChar: preview.selection.start.charOffset,
+              endChar: preview.selection.end.charOffset,
+              table: preview.table,
+            });
+          } else {
+            // 전체 start/end 포지션(파셀 컨텍스트 포함) 전달 — main.ts가 cell-aware 처리
+            await sendEditorRequest('applyEdit', {
+              section: preview.selection.start.sectionIndex,
+              start: preview.selection.start,
+              end: preview.selection.end,
+              startPara: preview.selection.start.paragraphIndex,
+              endPara: preview.selection.end.paragraphIndex,
+              startChar: preview.selection.start.charOffset,
+              endChar: preview.selection.end.charOffset,
+              newText: preview.content || '',
+            });
+          }
+        } else {
+          const para = state.structure?.paragraphs?.[preview.paragraph_index];
+          const section = Number(para?.section_index ?? 0);
+          const wasmPara = Number(para?.source_paragraph_index ?? preview.paragraph_index);
+          const charCount = Number(para?.char_count ?? String(para?.text || '').length);
+          if (isTable) {
+            // 문단 모드 + 표: insert면 문단 끝에, rewrite/summarize면 기존 문단 통째로 교체
+            const rewriteMode = preview.task_type !== 'insert';
+            await sendEditorRequest('applyEditTable', {
+              section,
+              startPara: wasmPara,
+              endPara: wasmPara,
+              startChar: rewriteMode ? 0 : charCount,
+              endChar: rewriteMode ? charCount : charCount,
+              table: preview.table,
+            });
+          } else if (preview.task_type === 'insert') {
+            // append a new paragraph after the target paragraph
+            await sendEditorRequest('applyEdit', {
+              section,
+              startPara: wasmPara,
+              endPara: wasmPara,
+              startChar: charCount,
+              endChar: charCount,
+              newText: '\n' + (preview.content || ''),
+            });
+          } else {
+            // rewrite/summarize → replace the whole paragraph
+            await sendEditorRequest('applyEdit', {
+              section,
+              startPara: wasmPara,
+              endPara: wasmPara,
+              startChar: 0,
+              endChar: charCount,
+              newText: preview.content || '',
+            });
+          }
+        }
+      } catch (err) {
+        editorOk = false;
+        addBubble('error', `에디터 반영 실패: ${err.message}`);
+      }
+      if (editorOk) {
+        addBubble('system', `✓ ${preview.selection ? '선택 영역' : `문단 ${preview.paragraph_index}`}에 삽입됨`);
+      }
       await reloadDocument();
+      insertBtn.textContent = editorOk ? '✓ 삽입됨' : '⚠ 부분 실패';
     } else {
-      addBubble('error', `적용 실패: ${res.message || '알 수 없는 오류'}`);
+      addBubble('error', `삽입 실패: ${res.message || '알 수 없는 오류'}`);
+      insertBtn.textContent = '📥 삽입';
+      insertBtn.disabled = false;
     }
-    card.remove();
   });
+
   card.querySelector('.cancel-btn').addEventListener('click', () => card.remove());
 }
 
@@ -168,10 +290,12 @@ window.addEventListener('message', (event) => {
   }
 
   if (msg.type === 'rhwp-selection') {
+    console.log('[rhwp-selection]', msg.payload);
     state.selection = msg.payload?.hasSelection ? msg.payload : null;
     if (state.selection?.start?.paragraphIndex !== undefined) {
       state.selectedIndex = state.selection.start.paragraphIndex;
     }
+    if (!state.selection) state.lastQuotedSelectionKey = null;
     updateSelInfo();
   }
 });
@@ -180,6 +304,7 @@ els.editorFrame.addEventListener('load', async () => {
   try {
     await sendEditorRequest('ready');
     state.editorReady = true;
+    startSelectionPolling();
   } catch {
     state.editorReady = false;
   }
@@ -206,25 +331,53 @@ function updateMeta(structure) {
 }
 
 function updateSelInfo() {
+  const node = els.selInfo;
+  node.classList.remove('sel-active', 'sel-para', 'sel-empty');
   if (state.selection?.hasSelection && state.selection.text) {
-    const preview = String(state.selection.text).slice(0, 40).replace(/\n/g, ' ');
-    els.selInfo.textContent = `선택됨 · ${preview}`;
+    const txt = String(state.selection.text).replace(/\n/g, ' ');
+    const preview = txt.length > 50 ? txt.slice(0, 50) + '…' : txt;
+    const len = txt.length;
+    node.textContent = `✓ 드래그 선택됨 (${len}자) · "${preview}"`;
+    node.title = txt;
+    node.classList.add('sel-active');
     return;
   }
+  node.title = '';
   if (state.selectedIndex == null) {
-    els.selInfo.textContent = '선택된 문단 없음';
+    node.textContent = '⭘ 선택 없음 — 텍스트를 드래그하거나 문단을 클릭하세요';
+    node.classList.add('sel-empty');
   } else {
-    els.selInfo.textContent = `문단 ${state.selectedIndex + 1} 선택됨`;
+    node.textContent = `문단 ${state.selectedIndex + 1} 선택됨`;
+    node.classList.add('sel-para');
   }
 }
 
+// 주기적 재조회 — push 이벤트 유실 및 셀선택 모드 상태 변화 보강.
+// 에디터가 ready이고 값이 달라진 경우만 state를 갱신해 깜박임 방지.
+let __selPollHandle = null;
+function startSelectionPolling() {
+  if (__selPollHandle) return;
+  __selPollHandle = setInterval(async () => {
+    if (!state.editorReady) return;
+    try {
+      const live = await sendEditorRequest('getSelection');
+      const curKey = state.selection ? selectionKey(state.selection) : null;
+      const liveKey = live?.hasSelection ? selectionKey(live) : null;
+      if (curKey !== liveKey) {
+        state.selection = live?.hasSelection ? live : null;
+        if (state.selection?.start?.paragraphIndex !== undefined) {
+          state.selectedIndex = state.selection.start.paragraphIndex;
+        }
+        updateSelInfo();
+      }
+    } catch { /* 에디터 준비 전이면 무시 */ }
+  }, 800);
+}
+
 function ensureDefaultParagraphSelection() {
-  if (state.selectedIndex != null) return;
-  const paragraphCount = Number(state.structure?.paragraph_count || 0);
-  if (paragraphCount > 0) {
-    state.selectedIndex = 0;
-    updateSelInfo();
-  }
+  // Intentionally a no-op: auto-defaulting to paragraph 0 silently targets the
+  // document title when a user asks to rewrite something they thought they had
+  // selected. Require explicit drag-selection or a "문단 N" mention instead.
 }
 
 async function openDocumentByPath(path) {
@@ -250,7 +403,7 @@ async function openDocumentByPath(path) {
       addBubble('error', `에디터 로드 실패: ${err.message}`);
     }
   } else {
-    addBubble('system', 'ℹ rhwp 에디터 준비 대기 중 — 잠시 후 다시 시도합니다.');
+    addBubble('system', 'ℹ 한글의 달인 준비 대기 중 — 잠시 후 다시 시도합니다.');
     setTimeout(() => {
       if (state.editorReady && state.path) loadIntoEditor(state.path).catch(() => {});
     }, 1500);
@@ -300,29 +453,41 @@ function parseIntent(text) {
 
   const paraMatch = t.match(/(?:문단|para(?:graph)?)\s*(\d+)|(\d+)\s*(?:번째|번)\s*문단/i);
   let paragraphIndex = null;
+  let paragraphIndexSource = null; // 'explicit' | 'selection' | 'click'
   if (paraMatch) {
     paragraphIndex = parseInt(paraMatch[1] || paraMatch[2], 10) - 1;
+    paragraphIndexSource = 'explicit';
   } else if (state.selection?.hasSelection) {
     paragraphIndex = state.selection.start.paragraphIndex;
+    paragraphIndexSource = 'selection';
   } else if (state.selectedIndex != null) {
     paragraphIndex = state.selectedIndex;
-  } else if (Number(state.structure?.paragraph_count || 0) > 0) {
-    paragraphIndex = 0;
-    state.selectedIndex = 0;
-    updateSelInfo();
+    paragraphIndexSource = 'click';
+  }
+
+  const hasRealSelection = !!(state.selection?.hasSelection && state.selection.text && state.selection.text.trim());
+  const mentionsSelection = /드래그|선택(?:한|된)?|이\s*부분|여기(?:에)?|표시한|하이라이트|highlighted|selected|selection/i.test(t);
+  const mentionsContentArea = /이\s*(?:내용|글|문장|표|행|열|셀|칸|항목|부분)|여기\s*(?:내용|글|부분)|위\s*(?:내용|표|글)/i.test(t);
+  if ((mentionsSelection || mentionsContentArea) && !hasRealSelection) {
+    return { type: 'need_selection' };
+  }
+  // Silently editing paragraph 0 when the user never picked a target is how we used to
+  // hallucinate unrelated content. Force an explicit pick if nothing is targeted.
+  if (paragraphIndex == null) {
+    return { type: 'need_index' };
   }
 
   if (/뒤에|다음에|이후에|추가|삽입|insert/.test(t)) {
-    if (state.selection?.hasSelection) return { type: 'ai_selection_insert', paragraphIndex, instruction: t };
+    if (hasRealSelection) return { type: 'ai_selection_insert', paragraphIndex, instruction: t };
     if (paragraphIndex == null) return { type: 'need_index' };
     return { type: 'ai_insert', paragraphIndex, instruction: t };
   }
   if (/요약|summar/i.test(t)) {
-    if (state.selection?.hasSelection) return { type: 'ai_selection_summarize', paragraphIndex, instruction: t };
+    if (hasRealSelection) return { type: 'ai_selection_summarize', paragraphIndex, instruction: t };
     if (paragraphIndex == null) return { type: 'need_index' };
     return { type: 'ai_summarize', paragraphIndex, instruction: t };
   }
-  if (state.selection?.hasSelection) return { type: 'ai_selection_rewrite', paragraphIndex, instruction: t };
+  if (hasRealSelection) return { type: 'ai_selection_rewrite', paragraphIndex, instruction: t };
   if (paragraphIndex == null) return { type: 'need_index' };
   return { type: 'ai_rewrite', paragraphIndex, instruction: t };
 }
@@ -333,13 +498,55 @@ function escapeHtml(s) {
   }[c]));
 }
 
+function addQuoteBubble(text) {
+  const preview = String(text).slice(0, 200).replace(/\s+/g, ' ').trim();
+  if (!preview) return;
+  const div = document.createElement('div');
+  div.className = 'bubble quote';
+  div.textContent = `" ${preview}${text.length > 200 ? '…' : ''} "`;
+  els.chatLog.appendChild(div);
+  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+}
+
 async function handleChat(text) {
+  // submit 시점 실시간 재조회 — 드래그 후 포커스/클릭으로 선택이 해제됐거나,
+  // push 이벤트가 유실된 경우 대비.
+  try {
+    if (state.editorReady) {
+      const live = await sendEditorRequest('getSelection');
+      if (live?.hasSelection && live.text && String(live.text).trim()) {
+        state.selection = live;
+        if (live.start?.paragraphIndex !== undefined) {
+          state.selectedIndex = live.start.paragraphIndex;
+        }
+        updateSelInfo();
+      }
+    }
+  } catch (err) {
+    console.warn('[handleChat] getSelection 재조회 실패', err);
+  }
+
+  if (state.selection?.hasSelection && state.selection.text) {
+    const key = selectionKey(state.selection);
+    if (key && key !== state.lastQuotedSelectionKey) {
+      addQuoteBubble(state.selection.text);
+      state.lastQuotedSelectionKey = key;
+    }
+  }
   addBubble('user', `${currentProvider().toUpperCase()} · ${text}`);
   const intent = parseIntent(text);
   if (!intent) return;
 
   if (intent.type === 'need_index') {
     addBubble('ai', '어느 문단이나 선택 영역을 대상으로 할까요? 문단을 클릭하거나 텍스트를 드래그해 주세요.');
+    return;
+  }
+  if (intent.type === 'need_selection') {
+    const sel = state.selection;
+    const diag = sel
+      ? `현재 selection: hasSelection=${!!sel.hasSelection}, text="${String(sel.text || '').slice(0, 30)}", start=${JSON.stringify(sel.start)}`
+      : '현재 selection: (null) — 편집기에서 선택 이벤트가 도착하지 않았습니다';
+    addBubble('ai', `⚠ "드래그한 부분"이라고 하셨는데 실제 선택 텍스트가 감지되지 않았어요.\n${diag}\n\n편집기에서 텍스트를 다시 드래그해 주세요. (Cmd+Shift+R로 강제 새로고침 후 재시도해 보세요.)`);
     return;
   }
   if (!state.documentId && intent.type !== 'save') {
@@ -367,6 +574,7 @@ async function handleChat(text) {
   const payload = selectionMode
     ? {
         provider,
+        document_id: state.documentId,
         selection: state.selection,
         task_type: taskType,
         instruction: intent.instruction,
@@ -452,6 +660,12 @@ els.chatForm.addEventListener('submit', (e) => {
   if (!text) return;
   els.chatText.value = '';
   handleChat(text);
+});
+
+els.newChatBtn?.addEventListener('click', () => {
+  state.lastQuotedSelectionKey = null;
+  els.chatText.value = '';
+  showEmptyChat();
 });
 els.chatText.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
