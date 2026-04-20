@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
-
 from cli_wrappers.claude_wrapper import ClaudeWrapperError, run_claude_json
 from orchestration.prompt_builder import build_paragraph_ai_prompt
 from orchestration.response_mapper import map_ai_preview
 from tools.extract_document_structure import extract_document_structure_tool
 from tools.insert_paragraph_after import insert_paragraph_after_tool
 from tools.replace_paragraph_text import replace_paragraph_text_tool
+from tools.replace_selection_text import replace_selection_text_tool
 
 
 def ai_preview_tool(document_id: str, paragraph_index: int, task_type: str, instruction: str) -> dict[str, object]:
@@ -61,6 +60,42 @@ def ai_preview_tool(document_id: str, paragraph_index: int, task_type: str, inst
     )
 
 
+def ai_selection_preview_tool(selection: dict[str, object], task_type: str, instruction: str) -> dict[str, object]:
+    selected_text = str(selection.get("text", "")).strip()
+    if not selected_text:
+        return {
+            "ok": False,
+            "message": "선택된 텍스트가 없습니다.",
+            "error_code": "EMPTY_SELECTION",
+        }
+
+    prompt = build_paragraph_ai_prompt(
+        task_type=task_type,
+        instruction=instruction,
+        paragraph_text=selected_text,
+    )
+
+    try:
+        result = run_claude_json(prompt)
+    except ClaudeWrapperError as exc:
+        return {
+            "ok": False,
+            "message": str(exc),
+            "error_code": "CLAUDE_WRAPPER_FAILED",
+        }
+
+    mapped = map_ai_preview(
+        task_type=task_type,
+        paragraph_index=int(selection.get("paragraph_index", 0)),
+        response=result["structured"],
+    )
+    if mapped.get("ok"):
+        data = mapped.get("data")
+        if isinstance(data, dict):
+            data["selection"] = selection
+    return mapped
+
+
 def ai_apply_tool(document_id: str, task_type: str, paragraph_index: int, content: str) -> dict[str, object]:
     if task_type == "insert":
         return insert_paragraph_after_tool(
@@ -71,5 +106,15 @@ def ai_apply_tool(document_id: str, task_type: str, paragraph_index: int, conten
     return replace_paragraph_text_tool(
         document_id=document_id,
         paragraph_index=paragraph_index,
+        new_text=content,
+    )
+
+
+def ai_apply_selection_tool(document_id: str, selection: dict[str, object], content: str) -> dict[str, object]:
+    return replace_selection_text_tool(
+        document_id=document_id,
+        paragraph_index=int(selection.get("paragraph_index", 0)),
+        start_char=int(selection.get("start_char", 0)),
+        end_char=int(selection.get("end_char", 0)),
         new_text=content,
     )

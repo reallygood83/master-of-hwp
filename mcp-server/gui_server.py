@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from config import SETTINGS
-from gui_ai import ai_apply_tool, ai_preview_tool
+from gui_ai import ai_apply_selection_tool, ai_apply_tool, ai_preview_tool, ai_selection_preview_tool
 from tools.extract_document_structure import extract_document_structure_tool
 from tools.extract_document_text import extract_document_text_tool
 from tools.insert_paragraph_after import insert_paragraph_after_tool
@@ -86,10 +86,20 @@ class GUIHandler(BaseHTTPRequestHandler):
                 task_type=str(data.get("task_type", "rewrite")),
                 instruction=str(data.get("instruction", "")),
             ),
+            "/api/ai/preview-selection": lambda data: ai_selection_preview_tool(
+                selection=data.get("selection") if isinstance(data.get("selection"), dict) else {},
+                task_type=str(data.get("task_type", "rewrite")),
+                instruction=str(data.get("instruction", "")),
+            ),
             "/api/ai/apply": lambda data: ai_apply_tool(
                 document_id=str(data.get("document_id", "")),
                 task_type=str(data.get("task_type", "rewrite")),
                 paragraph_index=int(data.get("paragraph_index", 0)),
+                content=str(data.get("content", "")),
+            ),
+            "/api/ai/apply-selection": lambda data: ai_apply_selection_tool(
+                document_id=str(data.get("document_id", "")),
+                selection=data.get("selection") if isinstance(data.get("selection"), dict) else {},
                 content=str(data.get("content", "")),
             ),
             "/api/save": lambda data: save_as_tool(

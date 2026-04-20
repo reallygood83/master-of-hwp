@@ -20,6 +20,8 @@ class OperationRecord(TypedDict, total=False):
     new_text: str
     row_count: int
     col_count: int
+    start_char: int
+    end_char: int
 
 
 class DocumentRecord(TypedDict):
