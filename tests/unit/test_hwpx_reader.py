@@ -12,6 +12,7 @@ from master_of_hwp.adapters.hwpx_reader import (
     HwpxFormatError,
     count_sections,
     extract_section_paragraphs,
+    extract_section_tables,
     extract_section_texts,
 )
 
@@ -38,6 +39,12 @@ def test_extract_section_texts_empty_bytes_raise_value_error() -> None:
 def test_extract_section_paragraphs_empty_bytes_raise_value_error() -> None:
     with pytest.raises(ValueError, match="must not be empty"):
         extract_section_paragraphs(b"")
+
+
+@pytest.mark.unit
+def test_extract_section_tables_empty_bytes_raise_value_error() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        extract_section_tables(b"")
 
 
 @pytest.mark.unit
@@ -171,3 +178,25 @@ def test_extract_section_paragraphs_real_sample_matches_section_count(samples_di
         for paragraphs in section_paragraphs
     )
     assert ["\n".join(paragraphs) for paragraphs in section_paragraphs] == section_texts
+
+
+@pytest.mark.unit
+def test_extract_section_tables_real_sample_has_table_content(samples_dir: Path) -> None:
+    sample = samples_dir / "public-official" / "table-vpos-01.hwpx"
+    if not sample.exists():
+        pytest.skip("sample missing")
+
+    raw_bytes = sample.read_bytes()
+    section_tables = extract_section_tables(raw_bytes)
+
+    assert len(section_tables) == count_sections(raw_bytes)
+    all_tables = [table for tables in section_tables for table in tables]
+    assert all_tables
+    assert all(len(table) >= 1 for table in all_tables)
+    assert all(len(row) >= 1 for table in all_tables for row in table)
+    assert all(
+        all(isinstance(paragraph, str) for paragraph in cell)
+        for table in all_tables
+        for row in table
+        for cell in row
+    )

@@ -101,6 +101,40 @@ def extract_section_paragraphs(raw_bytes: bytes) -> list[list[str]]:
     return paragraphs
 
 
+def extract_section_tables(raw_bytes: bytes) -> list[list[list[list[list[str]]]]]:
+    """Return tables per HWPX section XML part.
+
+    Args:
+        raw_bytes: The exact bytes of a `.hwpx` ZIP container.
+
+    Returns:
+        Outermost list: one entry per section XML part.
+        Then tables, rows, and cells where each cell is a list of paragraphs.
+
+    Raises:
+        ValueError: If `raw_bytes` is empty.
+        HwpxFormatError: If the payload is not a readable HWPX container or
+            one of its section XML parts is malformed.
+    """
+    if not raw_bytes:
+        raise ValueError("HWPX raw_bytes must not be empty.")
+
+    try:
+        with zipfile.ZipFile(BytesIO(raw_bytes)) as archive:
+            section_names = _list_section_part_names(archive)
+            tables = [_tables_from_section_xml(archive.read(name)) for name in section_names]
+    except zipfile.BadZipFile as exc:
+        raise HwpxFormatError(f"Not a valid HWPX (ZIP) container: {exc}") from exc
+    except KeyError as exc:
+        raise HwpxFormatError(f"HWPX section part is missing from the archive: {exc}") from exc
+    except OSError as exc:
+        raise HwpxFormatError(f"Failed to read HWPX container: {exc}") from exc
+
+    if len(tables) != len(section_names):
+        raise HwpxFormatError("Extracted HWPX section table count does not match section count.")
+    return tables
+
+
 def _list_section_part_names(archive: zipfile.ZipFile) -> list[str]:
     section_entries = sorted(
         (
@@ -173,6 +207,50 @@ def _paragraphs_from_section_xml(xml_bytes: bytes) -> list[str]:
         for paragraph in root.iter()
         if _local_name(paragraph.tag) == "p"
     ]
+
+
+def _tables_from_section_xml(xml_bytes: bytes) -> list[list[list[list[str]]]]:
+    try:
+        root = ElementTree.fromstring(xml_bytes)
+    except ElementTree.ParseError as exc:
+        raise HwpxFormatError(f"Invalid HWPX section XML: {exc}") from exc
+
+    return [_table_from_element(table) for table in _iter_top_level_tables(root)]
+
+
+def _iter_top_level_tables(element: ElementTree.Element) -> Iterator[ElementTree.Element]:
+    for child in list(element):
+        if _local_name(child.tag) == "tbl":
+            yield child
+            continue
+        yield from _iter_top_level_tables(child)
+
+
+def _table_from_element(table: ElementTree.Element) -> list[list[list[str]]]:
+    return [_row_from_element(row) for row in list(table) if _local_name(row.tag) == "tr"]
+
+
+def _row_from_element(row: ElementTree.Element) -> list[list[str]]:
+    return [
+        _cell_paragraphs_from_element(cell) for cell in list(row) if _local_name(cell.tag) == "tc"
+    ]
+
+
+def _cell_paragraphs_from_element(cell: ElementTree.Element) -> list[str]:
+    return [
+        "".join(text for text in _iter_paragraph_text_nodes(paragraph) if text)
+        for paragraph in _iter_cell_paragraphs(cell)
+    ]
+
+
+def _iter_cell_paragraphs(element: ElementTree.Element) -> Iterator[ElementTree.Element]:
+    if _local_name(element.tag) == "tbl":
+        return
+    if _local_name(element.tag) == "p":
+        yield element
+        return
+    for child in list(element):
+        yield from _iter_cell_paragraphs(child)
 
 
 def _iter_paragraph_text_nodes(paragraph: ElementTree.Element) -> Iterator[str]:

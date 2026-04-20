@@ -14,6 +14,7 @@ from olefile.olefile import OleFileError
 
 _SECTION_NAME_PATTERN = re.compile(r"Section\d+")
 _PARA_TEXT_TAG_ID = 0x43
+_TABLE_TAG_ID = 0x5B
 
 
 class Hwp5FormatError(ValueError):
@@ -116,6 +117,42 @@ def extract_section_paragraphs(raw_bytes: bytes) -> list[list[str]]:
     return paragraphs
 
 
+def extract_section_tables(raw_bytes: bytes) -> list[list[list[list[list[str]]]]]:
+    """Return tables per HWP 5.0 section stream.
+
+    Args:
+        raw_bytes: The exact bytes of a `.hwp` binary document.
+
+    Returns:
+        Outermost list: one entry per `BodyText/SectionN` stream.
+        Then tables, rows, and cells where each cell is a list of paragraphs.
+
+    Raises:
+        ValueError: If `raw_bytes` is empty.
+        Hwp5FormatError: If the payload is not a readable HWP 5.0 compound
+            file or one of its section streams is malformed.
+    """
+    try:
+        with _open_compound_file(raw_bytes) as compound_file:
+            section_names = _list_section_streams(compound_file)
+            tables = [
+                _extract_section_stream_tables(
+                    compound_file.openstream(["BodyText", section_name]).read()
+                )
+                for section_name in section_names
+            ]
+    except OSError as exc:
+        raise Hwp5FormatError(f"Failed to read HWP 5.0 compound file: {exc}") from exc
+    except OleFileError as exc:
+        raise Hwp5FormatError(f"Invalid HWP 5.0 compound structure: {exc}") from exc
+
+    if len(tables) != len(section_names):
+        raise Hwp5FormatError(
+            "Extracted section table count does not match BodyText section count."
+        )
+    return tables
+
+
 def _open_compound_file(raw_bytes: bytes) -> OleFileIO[Any]:
     if not raw_bytes:
         raise ValueError("HWP raw_bytes must not be empty.")
@@ -156,6 +193,44 @@ def _extract_section_stream_paragraphs(raw_section: bytes) -> list[str]:
         for tag_id, _level, record_payload in _iter_records(decompressed)
         if tag_id == _PARA_TEXT_TAG_ID
     ]
+
+
+def _extract_section_stream_tables(raw_section: bytes) -> list[list[list[list[str]]]]:
+    decompressed = _decompress_section(raw_section)
+    tables: list[list[list[list[str]]]] = []
+    current_table_level: int | None = None
+    current_table_paragraphs: list[str] = []
+    for tag_id, level, record_payload in _iter_records(decompressed):
+        if (
+            current_table_level is not None
+            and tag_id == _TABLE_TAG_ID
+            and level <= current_table_level
+        ):
+            tables.append(_materialize_minimal_table(current_table_paragraphs))
+            current_table_level = None
+            current_table_paragraphs = []
+        if tag_id == _TABLE_TAG_ID:
+            current_table_level = level
+            current_table_paragraphs = []
+            continue
+        if current_table_level is None:
+            continue
+        if level <= current_table_level:
+            tables.append(_materialize_minimal_table(current_table_paragraphs))
+            current_table_level = None
+            current_table_paragraphs = []
+            continue
+        if tag_id == _PARA_TEXT_TAG_ID:
+            current_table_paragraphs.append(_decode_para_text(record_payload).removesuffix("\r"))
+    if current_table_level is not None:
+        tables.append(_materialize_minimal_table(current_table_paragraphs))
+    return tables
+
+
+def _materialize_minimal_table(paragraphs: list[str]) -> list[list[list[str]]]:
+    if not paragraphs:
+        return []
+    return [[paragraphs]]
 
 
 def _decompress_section(raw_section: bytes) -> bytes:
