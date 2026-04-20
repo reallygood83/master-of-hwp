@@ -18,7 +18,9 @@ vendor/rhwp-main/rhwp-studio/node_modules/
 .mcp.json
 .claude/
 
-# Research scratch area
+# Generated status / scratch
+.pdca-status.json
+**/.pdca-status.json
 research/
 
 # Generated outputs

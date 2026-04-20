@@ -26,21 +26,20 @@ def run_claude_json(prompt: str) -> ClaudeRunResult:
         prompt,
     ]
     result = subprocess.run(command, capture_output=True, text=True, check=False)
+
+    payload = _parse_outer_payload(result.stdout)
     if result.returncode != 0:
+        if payload is not None:
+            error_message = str(payload.get("result") or payload.get("message") or "claude cli failed")
+            raise ClaudeWrapperError(error_message)
         stderr = result.stderr.strip() or "no stderr provided"
         raise ClaudeWrapperError(f"claude cli failed: {stderr}")
 
-    stdout = result.stdout.strip()
-    if not stdout:
-        raise ClaudeWrapperError("claude cli returned empty output")
-
-    try:
-        payload = json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        raise ClaudeWrapperError(f"claude cli returned invalid JSON: {exc}") from exc
-
-    if not isinstance(payload, dict):
-        raise ClaudeWrapperError("claude cli returned a non-object payload")
+    if payload is None:
+        stdout = result.stdout.strip()
+        if not stdout:
+            raise ClaudeWrapperError("claude cli returned empty output")
+        raise ClaudeWrapperError("claude cli returned invalid JSON output")
 
     raw_text = str(payload.get("result", "")).strip()
     if not raw_text:
@@ -61,3 +60,14 @@ def run_claude_json(prompt: str) -> ClaudeRunResult:
         "raw_text": raw_text,
         "structured": structured,
     }
+
+
+def _parse_outer_payload(raw: str) -> dict[str, object] | None:
+    text = raw.strip()
+    if not text:
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
