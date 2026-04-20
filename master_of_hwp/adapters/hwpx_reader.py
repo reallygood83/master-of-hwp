@@ -59,10 +59,34 @@ def extract_section_texts(raw_bytes: bytes) -> list[str]:
     if not raw_bytes:
         raise ValueError("HWPX raw_bytes must not be empty.")
 
+    section_paragraphs = extract_section_paragraphs(raw_bytes)
+    return ["\n".join(paragraphs) for paragraphs in section_paragraphs]
+
+
+def extract_section_paragraphs(raw_bytes: bytes) -> list[list[str]]:
+    """Return paragraphs per HWPX section XML part.
+
+    Args:
+        raw_bytes: The exact bytes of a `.hwpx` ZIP container.
+
+    Returns:
+        Outer list: one entry per section XML part.
+        Inner list: one string per `<p>` element.
+
+    Raises:
+        ValueError: If `raw_bytes` is empty.
+        HwpxFormatError: If the payload is not a readable HWPX container or
+            one of its section XML parts is malformed.
+    """
+    if not raw_bytes:
+        raise ValueError("HWPX raw_bytes must not be empty.")
+
     try:
         with zipfile.ZipFile(BytesIO(raw_bytes)) as archive:
             section_names = _list_section_part_names(archive)
-            texts = [_extract_text_from_section_xml(archive.read(name)) for name in section_names]
+            paragraphs = [
+                _paragraphs_from_section_xml(archive.read(name)) for name in section_names
+            ]
     except zipfile.BadZipFile as exc:
         raise HwpxFormatError(f"Not a valid HWPX (ZIP) container: {exc}") from exc
     except KeyError as exc:
@@ -70,9 +94,11 @@ def extract_section_texts(raw_bytes: bytes) -> list[str]:
     except OSError as exc:
         raise HwpxFormatError(f"Failed to read HWPX container: {exc}") from exc
 
-    if len(texts) != count_sections(raw_bytes):
-        raise HwpxFormatError("Extracted HWPX section text count does not match section count.")
-    return texts
+    if len(paragraphs) != len(section_names):
+        raise HwpxFormatError(
+            "Extracted HWPX section paragraph count does not match section count."
+        )
+    return paragraphs
 
 
 def _list_section_part_names(archive: zipfile.ZipFile) -> list[str]:
@@ -133,17 +159,20 @@ def _manifest_section_href_map(elements: Iterator[ElementTree.Element]) -> dict[
 
 
 def _extract_text_from_section_xml(xml_bytes: bytes) -> str:
+    return "\n".join(_paragraphs_from_section_xml(xml_bytes))
+
+
+def _paragraphs_from_section_xml(xml_bytes: bytes) -> list[str]:
     try:
         root = ElementTree.fromstring(xml_bytes)
     except ElementTree.ParseError as exc:
         raise HwpxFormatError(f"Invalid HWPX section XML: {exc}") from exc
 
-    paragraphs = [
+    return [
         "".join(text for text in _iter_paragraph_text_nodes(paragraph) if text)
         for paragraph in root.iter()
         if _local_name(paragraph.tag) == "p"
     ]
-    return "\n".join(paragraphs)
 
 
 def _iter_paragraph_text_nodes(paragraph: ElementTree.Element) -> Iterator[str]:

@@ -11,6 +11,7 @@ import pytest
 from master_of_hwp.adapters.hwpx_reader import (
     HwpxFormatError,
     count_sections,
+    extract_section_paragraphs,
     extract_section_texts,
 )
 
@@ -31,6 +32,12 @@ def test_non_zip_raises_hwpx_format_error() -> None:
 def test_extract_section_texts_empty_bytes_raise_value_error() -> None:
     with pytest.raises(ValueError, match="must not be empty"):
         extract_section_texts(b"")
+
+
+@pytest.mark.unit
+def test_extract_section_paragraphs_empty_bytes_raise_value_error() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        extract_section_paragraphs(b"")
 
 
 @pytest.mark.unit
@@ -103,6 +110,26 @@ def test_extract_section_texts_manifest_fallback_preserves_order() -> None:
 
 
 @pytest.mark.unit
+def test_extract_section_paragraphs_preserves_empty_paragraphs() -> None:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "Contents/section0.xml",
+            (
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                '<hs:sec xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph" '
+                'xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section">'
+                "<hp:p><hp:run><hp:t>first</hp:t></hp:run></hp:p>"
+                "<hp:p><hp:run></hp:run></hp:p>"
+                "<hp:p><hp:run><hp:t>third</hp:t></hp:run></hp:p>"
+                "</hs:sec>"
+            ),
+        )
+
+    assert extract_section_paragraphs(buffer.getvalue()) == [["first", "", "third"]]
+
+
+@pytest.mark.unit
 def test_real_sample_returns_positive_section_count(samples_dir: Path) -> None:
     sample = samples_dir / "public-official" / "table-vpos-01.hwpx"
     if not sample.exists():
@@ -125,3 +152,22 @@ def test_extract_section_texts_real_sample_matches_section_count(samples_dir: Pa
     assert len(section_texts) == count_sections(raw_bytes)
     assert all(isinstance(text, str) for text in section_texts)
     assert any(text.strip() for text in section_texts)
+
+
+@pytest.mark.unit
+def test_extract_section_paragraphs_real_sample_matches_section_count(samples_dir: Path) -> None:
+    sample = samples_dir / "public-official" / "table-vpos-01.hwpx"
+    if not sample.exists():
+        pytest.skip("sample missing")
+
+    raw_bytes = sample.read_bytes()
+    section_paragraphs = extract_section_paragraphs(raw_bytes)
+    section_texts = extract_section_texts(raw_bytes)
+
+    assert len(section_paragraphs) == count_sections(raw_bytes)
+    assert all(isinstance(paragraphs, list) for paragraphs in section_paragraphs)
+    assert all(
+        all(isinstance(paragraph, str) for paragraph in paragraphs)
+        for paragraphs in section_paragraphs
+    )
+    assert ["\n".join(paragraphs) for paragraphs in section_paragraphs] == section_texts

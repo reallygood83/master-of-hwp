@@ -80,6 +80,42 @@ def extract_section_texts(raw_bytes: bytes) -> list[str]:
     return texts
 
 
+def extract_section_paragraphs(raw_bytes: bytes) -> list[list[str]]:
+    """Return paragraphs per HWP 5.0 section stream.
+
+    Args:
+        raw_bytes: The exact bytes of a `.hwp` binary document.
+
+    Returns:
+        Outer list: one entry per `BodyText/SectionN` stream.
+        Inner list: one string per paragraph, based on `PARA_TEXT` records.
+
+    Raises:
+        ValueError: If `raw_bytes` is empty.
+        Hwp5FormatError: If the payload is not a readable HWP 5.0 compound
+            file or one of its section streams is malformed.
+    """
+    try:
+        with _open_compound_file(raw_bytes) as compound_file:
+            section_names = _list_section_streams(compound_file)
+            paragraphs = [
+                _extract_section_stream_paragraphs(
+                    compound_file.openstream(["BodyText", section_name]).read()
+                )
+                for section_name in section_names
+            ]
+    except OSError as exc:
+        raise Hwp5FormatError(f"Failed to read HWP 5.0 compound file: {exc}") from exc
+    except OleFileError as exc:
+        raise Hwp5FormatError(f"Invalid HWP 5.0 compound structure: {exc}") from exc
+
+    if len(paragraphs) != len(section_names):
+        raise Hwp5FormatError(
+            "Extracted section paragraph count does not match BodyText section count."
+        )
+    return paragraphs
+
+
 def _open_compound_file(raw_bytes: bytes) -> OleFileIO[Any]:
     if not raw_bytes:
         raise ValueError("HWP raw_bytes must not be empty.")
@@ -111,6 +147,15 @@ def _extract_section_stream_text(raw_section: bytes) -> str:
         for tag_id, _level, record_payload in _iter_records(decompressed)
         if tag_id == _PARA_TEXT_TAG_ID
     )
+
+
+def _extract_section_stream_paragraphs(raw_section: bytes) -> list[str]:
+    decompressed = _decompress_section(raw_section)
+    return [
+        _decode_para_text(record_payload).removesuffix("\r")
+        for tag_id, _level, record_payload in _iter_records(decompressed)
+        if tag_id == _PARA_TEXT_TAG_ID
+    ]
 
 
 def _decompress_section(raw_section: bytes) -> bytes:
