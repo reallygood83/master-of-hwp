@@ -153,6 +153,33 @@ def extract_section_tables(raw_bytes: bytes) -> list[list[list[list[list[str]]]]
     return tables
 
 
+def replace_paragraph(
+    raw_bytes: bytes,
+    section_index: int,
+    paragraph_index: int,
+    new_text: str,
+) -> bytes:
+    """Return new raw bytes with the specified paragraph replaced."""
+    try:
+        with _open_compound_file(raw_bytes) as compound_file:
+            section_names = _list_section_streams(compound_file)
+            if not 0 <= section_index < len(section_names):
+                raise IndexError(f"section_index {section_index} out of range")
+            section_name = section_names[section_index]
+            raw_section = compound_file.openstream(["BodyText", section_name]).read()
+            current_paragraphs = _extract_section_stream_paragraphs(raw_section)
+    except OSError as exc:
+        raise Hwp5FormatError(f"Failed to read HWP 5.0 compound file: {exc}") from exc
+    except OleFileError as exc:
+        raise Hwp5FormatError(f"Invalid HWP 5.0 compound structure: {exc}") from exc
+
+    if not 0 <= paragraph_index < len(current_paragraphs):
+        raise IndexError(f"paragraph_index {paragraph_index} out of range")
+    if current_paragraphs[paragraph_index] == new_text:
+        return raw_bytes
+    raise Hwp5FormatError("In-place resize required; write path pending richer CFBF writer.")
+
+
 def _open_compound_file(raw_bytes: bytes) -> OleFileIO[Any]:
     if not raw_bytes:
         raise ValueError("HWP raw_bytes must not be empty.")

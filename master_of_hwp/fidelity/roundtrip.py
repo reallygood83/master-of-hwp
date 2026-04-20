@@ -11,38 +11,10 @@ and text_equal return None until the parse pipeline lands in Phase 1.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from master_of_hwp.core.document import HwpDocument
-
-
-@dataclass(frozen=True)
-class FidelityReport:
-    """Result of a round-trip fidelity measurement.
-
-    Attributes:
-        path: The document path tested.
-        byte_equal: True if the round-tripped bytes match exactly.
-        byte_diff_count: Number of differing bytes (0 when byte_equal).
-        structural_equal: True if the structural parse matches. None
-            until the parse pipeline lands.
-        text_equal: True if extracted plain text matches. None until
-            extraction lands.
-        score: Composite score in [0.0, 1.0]. 1.0 = perfect round trip.
-    """
-
-    path: Path
-    byte_equal: bool
-    byte_diff_count: int
-    structural_equal: bool | None
-    text_equal: bool | None
-    score: float
-
-    @property
-    def passed(self) -> bool:
-        """A report passes when byte OR structural equality holds."""
-        return self.byte_equal or self.structural_equal is True
+from master_of_hwp.fidelity.harness import FidelityReport
 
 
 def measure_roundtrip(path: str | Path) -> FidelityReport:

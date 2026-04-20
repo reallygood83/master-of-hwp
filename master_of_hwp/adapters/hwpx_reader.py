@@ -135,6 +135,49 @@ def extract_section_tables(raw_bytes: bytes) -> list[list[list[list[list[str]]]]
     return tables
 
 
+def replace_paragraph(
+    raw_bytes: bytes,
+    section_index: int,
+    paragraph_index: int,
+    new_text: str,
+) -> bytes:
+    """Return new raw bytes with the specified paragraph replaced."""
+    if not raw_bytes:
+        raise ValueError("HWPX raw_bytes must not be empty.")
+
+    try:
+        with zipfile.ZipFile(BytesIO(raw_bytes)) as archive:
+            entries = [(info, archive.read(info.filename)) for info in archive.infolist()]
+            section_names = _list_section_part_names(archive)
+    except zipfile.BadZipFile as exc:
+        raise HwpxFormatError(f"Not a valid HWPX (ZIP) container: {exc}") from exc
+    except OSError as exc:
+        raise HwpxFormatError(f"Failed to read HWPX container: {exc}") from exc
+
+    if not 0 <= section_index < len(section_names):
+        raise IndexError(f"section_index {section_index} out of range")
+    target_name = section_names[section_index]
+
+    replaced = False
+    updated_entries: list[tuple[zipfile.ZipInfo, bytes]] = []
+    for info, data in entries:
+        if info.filename == target_name:
+            updated_entries.append(
+                (info, _replace_paragraph_in_section_xml(data, paragraph_index, new_text))
+            )
+            replaced = True
+            continue
+        updated_entries.append((info, data))
+    if not replaced:
+        raise HwpxFormatError(f"HWPX target section part not found: {target_name}")
+
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w") as destination:
+        for info, data in updated_entries:
+            destination.writestr(info, data)
+    return output.getvalue()
+
+
 def _list_section_part_names(archive: zipfile.ZipFile) -> list[str]:
     section_entries = sorted(
         (
@@ -196,6 +239,23 @@ def _extract_text_from_section_xml(xml_bytes: bytes) -> str:
     return "\n".join(_paragraphs_from_section_xml(xml_bytes))
 
 
+def _replace_paragraph_in_section_xml(
+    xml_bytes: bytes,
+    paragraph_index: int,
+    new_text: str,
+) -> bytes:
+    try:
+        root = ElementTree.fromstring(xml_bytes)
+    except ElementTree.ParseError as exc:
+        raise HwpxFormatError(f"Invalid HWPX section XML: {exc}") from exc
+
+    paragraphs = [paragraph for paragraph in root.iter() if _local_name(paragraph.tag) == "p"]
+    if not 0 <= paragraph_index < len(paragraphs):
+        raise IndexError(f"paragraph_index {paragraph_index} out of range")
+    _replace_paragraph_text(paragraphs[paragraph_index], new_text)
+    return bytes(ElementTree.tostring(root, encoding="utf-8", xml_declaration=True))
+
+
 def _paragraphs_from_section_xml(xml_bytes: bytes) -> list[str]:
     try:
         root = ElementTree.fromstring(xml_bytes)
@@ -207,6 +267,30 @@ def _paragraphs_from_section_xml(xml_bytes: bytes) -> list[str]:
         for paragraph in root.iter()
         if _local_name(paragraph.tag) == "p"
     ]
+
+
+def _replace_paragraph_text(paragraph: ElementTree.Element, new_text: str) -> None:
+    t_elements = list(_iter_paragraph_text_elements(paragraph))
+    if t_elements:
+        t_elements[0].text = new_text
+        parent_map = _build_parent_map(paragraph)
+        for extra in t_elements[1:]:
+            parent = parent_map.get(extra)
+            if parent is not None:
+                parent.remove(extra)
+        return
+
+    runs = [element for element in paragraph.iter() if _local_name(element.tag) == "run"]
+    if runs:
+        run = runs[0]
+    else:
+        run = ElementTree.SubElement(paragraph, _qualified_tag(paragraph.tag, "run"))
+    t_element = ElementTree.SubElement(run, _qualified_tag(run.tag, "t"))
+    t_element.text = new_text
+
+
+def _build_parent_map(root: ElementTree.Element) -> dict[ElementTree.Element, ElementTree.Element]:
+    return {child: parent for parent in root.iter() for child in list(parent)}
 
 
 def _tables_from_section_xml(xml_bytes: bytes) -> list[list[list[list[str]]]]:
@@ -254,10 +338,34 @@ def _iter_cell_paragraphs(element: ElementTree.Element) -> Iterator[ElementTree.
 
 
 def _iter_paragraph_text_nodes(paragraph: ElementTree.Element) -> Iterator[str]:
-    for element in paragraph.iter():
-        if _local_name(element.tag) == "t":
-            yield element.text or ""
+    for element in _iter_paragraph_text_elements(paragraph):
+        yield element.text or ""
+
+
+def _iter_paragraph_text_elements(paragraph: ElementTree.Element) -> Iterator[ElementTree.Element]:
+    for child in list(paragraph):
+        yield from _iter_text_elements_without_nested_paragraphs(child)
+
+
+def _iter_text_elements_without_nested_paragraphs(
+    element: ElementTree.Element,
+) -> Iterator[ElementTree.Element]:
+    local_name = _local_name(element.tag)
+    if local_name == "p":
+        return
+    if local_name == "t":
+        yield element
+        return
+    for child in list(element):
+        yield from _iter_text_elements_without_nested_paragraphs(child)
 
 
 def _local_name(tag: str) -> str:
     return tag.rsplit("}", maxsplit=1)[-1]
+
+
+def _qualified_tag(reference_tag: str, local_name: str) -> str:
+    if reference_tag.startswith("{"):
+        namespace, _closing, _name = reference_tag[1:].partition("}")
+        return f"{{{namespace}}}{local_name}"
+    return local_name
