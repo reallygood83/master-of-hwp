@@ -681,11 +681,15 @@ els.newChatBtn?.addEventListener('click', () => {
   els.chatText.value = '';
   showEmptyChat();
 });
+// Enter handling with IME (Korean composition) protection.
+// Pressing Enter while a hangul syllable is mid-composition would otherwise
+// leave the last jamo/syllable in the textarea and cause the next submit to
+// fire with just that stray character ("줘" bug).
 els.chatText.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    els.chatForm.dispatchEvent(new Event('submit'));
-  }
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  if (e.isComposing || e.keyCode === 229) return; // IME mid-composition
+  e.preventDefault();
+  els.chatForm.dispatchEvent(new Event('submit'));
 });
 
 showEmptyChat();

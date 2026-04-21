@@ -76,3 +76,63 @@ class AnthropicProvider:
         if not isinstance(payload, dict):
             raise ValueError("Anthropic response JSON was not an object.")
         return payload
+
+
+class OpenAIProvider:
+    """OpenAI provider loaded lazily from the optional `ai` extra.
+
+    Suitable for the Codex CLI crowd (users who prefer OpenAI models).
+    Uses the `openai` SDK and defaults to GPT-4o.
+    """
+
+    def __init__(self, model: str = "gpt-4o", api_key: str | None = None) -> None:
+        self.model = model
+        resolved_key = api_key or os.environ.get("OPENAI_API_KEY")
+        try:
+            from openai import OpenAI  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise RuntimeError(
+                "Install master-of-hwp with the 'ai' extra + openai to use OpenAIProvider."
+            ) from exc
+        self._client = OpenAI(api_key=resolved_key)
+
+    def complete(self, system: str, user: str, *, max_tokens: int = 1024) -> str:
+        """Return raw text completion."""
+        response = self._client.chat.completions.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        content = response.choices[0].message.content or ""
+        return str(content).strip()
+
+    def complete_json(
+        self,
+        system: str,
+        user: str,
+        schema: dict[str, Any],
+        *,
+        max_tokens: int = 1024,
+    ) -> dict[str, Any]:
+        """Return structured JSON completion matching schema."""
+        del schema
+        response = self._client.chat.completions.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": f"{user}\n\nReturn only a JSON object."},
+            ],
+        )
+        text = response.choices[0].message.content or "{}"
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"OpenAI response was not JSON: {text[:200]}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("OpenAI response JSON was not an object.")
+        return payload

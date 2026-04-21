@@ -168,12 +168,17 @@ class StudioHandler(BaseHTTPRequestHandler):
 
 
 def _handle_status() -> dict[str, Any]:
+    providers = []
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        providers.append("claude")
+    if os.environ.get("OPENAI_API_KEY"):
+        providers.append("codex")
     return {
         "ok": True,
         "data": {
-            "version": "0.1.1",
+            "version": "0.3.0",
             "integration": {"data": {"ready": True}},
-            "providers": ["claude"],
+            "providers": providers or ["claude", "codex"],
             "editor_url": "http://127.0.0.1:7700/",
         },
     }
@@ -297,53 +302,199 @@ def _handle_file_bytes(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_ai_preview(body: dict[str, Any]) -> dict[str, Any]:
+    """Generate a new-content preview for a paragraph-scoped edit."""
     document_id = str(body.get("document_id", ""))
-    request_text = str(body.get("request", "")).strip()
+    instruction = _instruction_from(body)
+    paragraph_index = _as_int(body.get("paragraph_index"))
+    task_type = str(body.get("task_type", "rewrite"))
+    provider_key = str(body.get("provider", "claude"))
     session = _registry.get(document_id)
     if session is None:
         return {"ok": False, "message": "Unknown document_id"}
-    if not request_text:
-        return {"ok": False, "message": "request is required"}
-    provider = _build_provider_or_none()
-    result = session.doc.ai_edit(request_text, provider=provider, dry_run=True)
+    if paragraph_index is None:
+        return {"ok": False, "message": "paragraph_index is required"}
+    paragraphs = session.doc.section_paragraphs
+    target_text = _paragraph_text_at(paragraphs, 0, paragraph_index)
+    if target_text is None:
+        return {"ok": False, "message": f"paragraph_index {paragraph_index} out of range"}
+
+    new_content = _generate_edit_content(
+        provider_key=provider_key,
+        task_type=task_type,
+        original=target_text,
+        instruction=instruction,
+    )
     return {
         "ok": True,
         "data": {
-            "status": result.status,
-            "message": result.message,
-            "intent": _intent_to_dict(result.intent),
-            "locator": _locator_to_dict(result.locator),
-            "content": request_text,
-            "task_type": "replace_text",
+            "task_type": task_type,
+            "paragraph_index": paragraph_index,
+            "content": new_content,
+            "original": target_text,
+            "provider": provider_key,
+        },
+    }
+
+
+def _handle_ai_preview_selection(body: dict[str, Any]) -> dict[str, Any]:
+    """Generate a new-content preview for a drag-selection edit."""
+    document_id = str(body.get("document_id", ""))
+    instruction = _instruction_from(body)
+    selection = body.get("selection") or {}
+    task_type = str(body.get("task_type", "rewrite"))
+    provider_key = str(body.get("provider", "claude"))
+    session = _registry.get(document_id)
+    if session is None:
+        return {"ok": False, "message": "Unknown document_id"}
+    selected_text = str((selection or {}).get("text", "")).strip()
+    if not selected_text:
+        return {"ok": False, "message": "selection.text is required"}
+
+    new_content = _generate_edit_content(
+        provider_key=provider_key,
+        task_type=task_type,
+        original=selected_text,
+        instruction=instruction,
+    )
+    return {
+        "ok": True,
+        "data": {
+            "task_type": task_type,
+            "selection": selection,
+            "content": new_content,
+            "original": selected_text,
+            "provider": provider_key,
         },
     }
 
 
 def _handle_ai_apply(body: dict[str, Any]) -> dict[str, Any]:
+    """Apply a previewed paragraph edit to the document."""
     document_id = str(body.get("document_id", ""))
-    request_text = str(body.get("request", "") or body.get("content", "")).strip()
+    paragraph_index = _as_int(body.get("paragraph_index"))
+    content = str(body.get("content", "")).strip()
     session = _registry.get(document_id)
     if session is None:
         return {"ok": False, "message": "Unknown document_id"}
-    provider = _build_provider_or_none()
-    result = session.doc.ai_edit(request_text, provider=provider, dry_run=False)
-    if result.status != "applied":
-        return {
-            "ok": False,
-            "message": result.message,
-            "data": {"status": result.status},
-        }
-    _registry.replace(document_id, result.new_doc)
-    return {
-        "ok": True,
-        "data": {
-            "status": "applied",
-            "message": result.message,
-        },
-    }
+    if paragraph_index is None or not content:
+        return {"ok": False, "message": "paragraph_index and content are required"}
+    try:
+        new_doc = session.doc.replace_paragraph(0, paragraph_index, content)
+    except (IndexError, Exception) as exc:  # noqa: BLE001
+        return {"ok": False, "message": f"Apply failed: {exc}"}
+    _registry.replace(document_id, new_doc)
+    return {"ok": True, "data": {"status": "applied", "paragraph_index": paragraph_index}}
 
 
-def _build_provider_or_none() -> Any:
+def _handle_ai_apply_selection(body: dict[str, Any]) -> dict[str, Any]:
+    """Apply an edit to the paragraph that contains the user's selection."""
+    document_id = str(body.get("document_id", ""))
+    selection = body.get("selection") or {}
+    content = str(body.get("content", "")).strip()
+    session = _registry.get(document_id)
+    if session is None:
+        return {"ok": False, "message": "Unknown document_id"}
+    if not content:
+        return {"ok": False, "message": "content is required"}
+    start = (selection or {}).get("start") or {}
+    para_index = _as_int(start.get("paragraphIndex"))
+    if para_index is None:
+        return {"ok": False, "message": "selection.start.paragraphIndex is required"}
+    try:
+        new_doc = session.doc.replace_paragraph(0, para_index, content)
+    except (IndexError, Exception) as exc:  # noqa: BLE001
+        return {"ok": False, "message": f"Apply failed: {exc}"}
+    _registry.replace(document_id, new_doc)
+    return {"ok": True, "data": {"status": "applied", "paragraph_index": para_index}}
+
+
+def _instruction_from(body: dict[str, Any]) -> str:
+    return str(body.get("instruction") or body.get("request") or "").strip()
+
+
+def _as_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _paragraph_text_at(paragraphs: list[list[str]], section: int, index: int) -> str | None:
+    if section < 0 or section >= len(paragraphs):
+        return None
+    items = paragraphs[section]
+    if index < 0 or index >= len(items):
+        return None
+    return items[index]
+
+
+def _generate_edit_content(
+    *,
+    provider_key: str,
+    task_type: str,
+    original: str,
+    instruction: str,
+) -> str:
+    """Return new paragraph text using the selected provider, or a
+    deterministic rule-based fallback if no API key / provider is available.
+    """
+    provider = _build_provider(provider_key)
+    system_prompt = (
+        "You are a helpful HWP document editor assistant. "
+        "Return ONLY the rewritten text, no explanations, no quotes. "
+        "Preserve the original language (Korean input → Korean output)."
+    )
+    user_prompt = _build_edit_user_prompt(task_type, original, instruction)
+    if provider is not None:
+        try:
+            result = provider.complete(system_prompt, user_prompt, max_tokens=800)
+            if result:
+                return result.strip().strip('"').strip("'")
+        except Exception:  # noqa: BLE001 — fall back to rule-based below
+            pass
+    return _rule_based_edit(task_type, original, instruction)
+
+
+def _build_edit_user_prompt(task_type: str, original: str, instruction: str) -> str:
+    header = {
+        "rewrite": "사용자 지시에 따라 아래 문단을 다시 쓰세요.",
+        "summarize": "아래 문단을 한 줄로 요약하세요.",
+        "insert": "아래 문단 다음에 이어질 자연스러운 새 문단을 작성하세요.",
+    }.get(task_type, "사용자 지시에 따라 아래 문단을 편집하세요.")
+    return (
+        f"{header}\n\n"
+        f"지시: {instruction or '(별도 지시 없음)'}\n\n"
+        f"원문:\n{original}\n\n"
+        f"결과:"
+    )
+
+
+def _rule_based_edit(task_type: str, original: str, instruction: str) -> str:
+    """Deterministic no-LLM fallback so the UI still shows something useful."""
+    if task_type == "summarize":
+        first_line = original.splitlines()[0] if original else ""
+        truncated = first_line[:60]
+        return f"{truncated}…" if len(first_line) > 60 else truncated
+    if task_type == "insert":
+        return f"[추가 문단 — LLM 응답 불가: {instruction or '지시 없음'}]"
+    suffix = f" [{instruction}]" if instruction else " [편집]"
+    return original + suffix
+
+
+def _build_provider(provider_key: str) -> Any:
+    """Instantiate an LLMProvider for the given key, or return None."""
+    key = provider_key.lower().strip()
+    if key in {"claude", "claude-code", "anthropic"}:
+        return _build_anthropic()
+    if key in {"codex", "openai", "gpt"}:
+        return _build_openai()
+    # Unknown provider name — fall back to the default (Claude if available).
+    return _build_anthropic() or _build_openai()
+
+
+def _build_anthropic() -> Any:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
     try:
@@ -354,24 +505,15 @@ def _build_provider_or_none() -> Any:
         return None
 
 
-def _intent_to_dict(intent: object) -> dict[str, Any] | None:
-    if intent is None:
+def _build_openai() -> Any:
+    if not os.environ.get("OPENAI_API_KEY"):
         return None
-    return {
-        "action": getattr(getattr(intent, "action", None), "value", ""),
-        "target": getattr(intent, "target", ""),
-        "confidence": getattr(intent, "confidence", 0.0),
-    }
+    try:
+        from master_of_hwp.ai.providers import OpenAIProvider
 
-
-def _locator_to_dict(locator: object) -> dict[str, Any] | None:
-    if locator is None:
+        return OpenAIProvider()
+    except Exception:  # noqa: BLE001
         return None
-    return {
-        "section_index": getattr(locator, "section_index", 0),
-        "paragraph_index": getattr(locator, "paragraph_index", None),
-        "confidence": getattr(locator, "confidence", 0.0),
-    }
 
 
 def _content_type_for(filename: str) -> str:
@@ -391,7 +533,9 @@ _POST_ROUTES: dict[str, Any] = {
     "/api/save": _handle_save,
     "/api/file-bytes": _handle_file_bytes,
     "/api/ai/preview": _handle_ai_preview,
+    "/api/ai/preview-selection": _handle_ai_preview_selection,
     "/api/ai/apply": _handle_ai_apply,
+    "/api/ai/apply-selection": _handle_ai_apply_selection,
 }
 
 
