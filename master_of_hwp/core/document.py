@@ -277,6 +277,44 @@ class HwpDocument:
             raw_bytes=new_bytes,
         )
 
+    def replace_table_cell_paragraph(
+        self,
+        section_index: int,
+        table_index: int,
+        row_index: int,
+        cell_index: int,
+        paragraph_index: int,
+        new_text: str,
+    ) -> Self:
+        """Return a new document with one table cell paragraph replaced.
+
+        HWPX is supported in v0.2. HWP 5.0 raises `NotImplementedError`
+        until the richer write path can preserve compound-file table
+        structure safely.
+        """
+        if self.source_format is SourceFormat.HWP:
+            raise NotImplementedError("HWP 5.0 table cell editing pending v0.2.x")
+        if self.source_format is SourceFormat.HWPX:
+            from master_of_hwp.adapters.hwpx_reader import (
+                replace_table_cell_paragraph as _hwpx_replace_table_cell,
+            )
+
+            new_bytes = _hwpx_replace_table_cell(
+                self.raw_bytes,
+                section_index,
+                table_index,
+                row_index,
+                cell_index,
+                paragraph_index,
+                new_text,
+            )
+            return type(self)(
+                path=self.path,
+                source_format=self.source_format,
+                raw_bytes=new_bytes,
+            )
+        raise AssertionError(f"Unhandled source_format: {self.source_format!r}")
+
     @property
     def plain_text(self) -> str:
         """Concatenate all sections into a single format-agnostic string.

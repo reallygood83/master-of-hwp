@@ -178,6 +178,62 @@ def replace_paragraph(
     return output.getvalue()
 
 
+def replace_table_cell_paragraph(
+    raw_bytes: bytes,
+    section_index: int,
+    table_index: int,
+    row_index: int,
+    cell_index: int,
+    paragraph_index: int,
+    new_text: str,
+) -> bytes:
+    """Return new raw bytes with the targeted table cell paragraph replaced."""
+    if not raw_bytes:
+        raise ValueError("HWPX raw_bytes must not be empty.")
+
+    try:
+        with zipfile.ZipFile(BytesIO(raw_bytes)) as archive:
+            entries = [(info, archive.read(info.filename)) for info in archive.infolist()]
+            section_names = _list_section_part_names(archive)
+    except zipfile.BadZipFile as exc:
+        raise HwpxFormatError(f"Not a valid HWPX (ZIP) container: {exc}") from exc
+    except OSError as exc:
+        raise HwpxFormatError(f"Failed to read HWPX container: {exc}") from exc
+
+    if not 0 <= section_index < len(section_names):
+        raise IndexError(f"section_index {section_index} out of range")
+    target_name = section_names[section_index]
+
+    replaced = False
+    updated_entries: list[tuple[zipfile.ZipInfo, bytes]] = []
+    for info, data in entries:
+        if info.filename == target_name:
+            updated_entries.append(
+                (
+                    info,
+                    _replace_paragraph_in_table_cell(
+                        data,
+                        table_index,
+                        row_index,
+                        cell_index,
+                        paragraph_index,
+                        new_text,
+                    ),
+                )
+            )
+            replaced = True
+            continue
+        updated_entries.append((info, data))
+    if not replaced:
+        raise HwpxFormatError(f"HWPX target section part not found: {target_name}")
+
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w") as destination:
+        for info, data in updated_entries:
+            destination.writestr(info, data)
+    return output.getvalue()
+
+
 def _list_section_part_names(archive: zipfile.ZipFile) -> list[str]:
     section_entries = sorted(
         (
@@ -252,6 +308,36 @@ def _replace_paragraph_in_section_xml(
     paragraphs = [paragraph for paragraph in root.iter() if _local_name(paragraph.tag) == "p"]
     if not 0 <= paragraph_index < len(paragraphs):
         raise IndexError(f"paragraph_index {paragraph_index} out of range")
+    _replace_paragraph_text(paragraphs[paragraph_index], new_text)
+    return bytes(ElementTree.tostring(root, encoding="utf-8", xml_declaration=True))
+
+
+def _replace_paragraph_in_table_cell(
+    xml_bytes: bytes,
+    table_index: int,
+    row_index: int,
+    cell_index: int,
+    paragraph_index: int,
+    new_text: str,
+) -> bytes:
+    try:
+        root = ElementTree.fromstring(xml_bytes)
+    except ElementTree.ParseError as exc:
+        raise HwpxFormatError(f"Invalid HWPX section XML: {exc}") from exc
+
+    tables = list(_iter_top_level_tables(root))
+    if not 0 <= table_index < len(tables):
+        raise IndexError(f"table_index {table_index} out of range")
+    rows = [row for row in list(tables[table_index]) if _local_name(row.tag) == "tr"]
+    if not 0 <= row_index < len(rows):
+        raise IndexError(f"row_index {row_index} out of range")
+    cells = [cell for cell in list(rows[row_index]) if _local_name(cell.tag) == "tc"]
+    if not 0 <= cell_index < len(cells):
+        raise IndexError(f"cell_index {cell_index} out of range")
+    paragraphs = list(_iter_cell_paragraphs(cells[cell_index]))
+    if not 0 <= paragraph_index < len(paragraphs):
+        raise IndexError(f"paragraph_index {paragraph_index} out of range")
+
     _replace_paragraph_text(paragraphs[paragraph_index], new_text)
     return bytes(ElementTree.tostring(root, encoding="utf-8", xml_declaration=True))
 
