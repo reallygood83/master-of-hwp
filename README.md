@@ -52,6 +52,8 @@ edited.path.with_suffix(".edited.hwpx").write_bytes(edited.raw_bytes)
 | `.find_paragraphs(query, regex=, case_sensitive=)` | Substring or regex search |
 | `.summary()` | Compact JSON-serializable overview for LLM context |
 | `.replace_paragraph(s, p, text)` | Return a new document with one paragraph replaced |
+| `.replace_table_cell_paragraph(s, t, r, c, p, text)` | Edit a paragraph inside a table cell (HWPX) |
+| `.ai_edit(request, provider=, dry_run=)` | Natural-language edit pipeline (intent → locate → apply → verify) |
 
 ## Supported Formats
 
@@ -63,26 +65,49 @@ edited.path.with_suffix(".edited.hwpx").write_bytes(edited.raw_bytes)
 | Enumerate paragraphs | ✅ | ✅ |
 | Enumerate tables | Best effort* | ✅ |
 | Replace paragraph | Same-length only** | ✅ |
-| Insert / delete | ❌ (v0.2) | ❌ (v0.2) |
+| Replace table cell paragraph | ❌ (v0.3) | ✅ |
+| Insert / delete | ❌ (v0.3) | ❌ (v0.3) |
 
 <sup>* Minimal heuristic anchored on the `TABLE(0x5B)` record; exact row/cell recovery is pending a richer record-level parser.</sup>
-<sup>** Different-length HWP 5.0 edits require a CFBF stream resize writer, scheduled for v0.2.</sup>
+<sup>** Different-length HWP 5.0 edits require a CFBF stream resize writer, scheduled for v0.3.</sup>
 
-## AI Integration (v0.3 preview)
+## Natural-Language Editing
 
-The `master_of_hwp.ai` package reserves a frozen public surface for agentic edit loops:
-
-```python
-from master_of_hwp.ai import (
-    EditIntent, parse_edit_intent,
-    ParagraphLocator, LocatorScope,
-    ReplaceOperation,  # live in v0.1
-    InsertOperation, DeleteOperation,  # NotImplementedError until v0.2
-    RollbackTransaction,
-)
+```bash
+pip install master-of-hwp[ai]  # adds anthropic SDK
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-The shapes are stable; runtime implementations of `locate_targets()` and transactional `RollbackTransaction.apply()` land in v0.3.
+```python
+from master_of_hwp import HwpDocument
+from master_of_hwp.ai.providers import AnthropicProvider
+
+doc = HwpDocument.open("가정통신문.hwpx")
+result = doc.ai_edit(
+    "첫 번째 문단의 '급식비'를 '수업료'로 바꿔줘",
+    provider=AnthropicProvider(),
+)
+if result.status == "applied":
+    result.new_doc.path.with_suffix(".edited.hwpx").write_bytes(result.new_doc.raw_bytes)
+else:
+    print(result.message)  # refused / failed explanation
+```
+
+Without an API key, a rule-based fallback parser handles simple patterns
+(`바꿔`, `변경`, keyword matches). See `master_of_hwp.ai.providers` for
+the `LLMProvider` Protocol — plug in OpenAI, local Ollama, etc.
+
+## Studio (Non-developer GUI)
+
+For teachers / office workers who want a one-click experience:
+
+```bash
+pip install master-of-hwp-studio
+mohwp studio                    # launches web GUI + MCP server
+mohwp mcp-config                # prints Claude Desktop config snippet
+```
+
+See [`studio/README.md`](studio/README.md).
 
 ## Fidelity Harness
 
