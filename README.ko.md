@@ -1,8 +1,34 @@
 # master-of-hwp
 
-> ⚠️ **Phase 0 — Core API 추출 중 (v0.0.x)**
-> 에디터(rhwp-studio)는 **Feature Freeze** 상태입니다. 현재 모든 에너지는 파이썬 Core API(`master_of_hwp`)의 PyPI 배포 가능한 수준까지의 안정화에 집중되어 있습니다.
-> 자세한 방향은 [docs/ROADMAP.md](docs/ROADMAP.md)와 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)에서 확인하세요.
+[![PyPI](https://img.shields.io/pypi/v/master-of-hwp.svg)](https://pypi.org/project/master-of-hwp/)
+[![Python](https://img.shields.io/pypi/pyversions/master-of-hwp.svg)](https://pypi.org/project/master-of-hwp/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> 🎉 **v0.1.0 공개 (2026-04-21)** — `pip install master-of-hwp`
+> 읽기 API 완성 + HWPX 문단 편집 기본기가 들어간 첫 PyPI 릴리스입니다.
+> 영어 요약: [README.md](README.md). 릴리스 노트: [CHANGELOG.md](CHANGELOG.md).
+> 로드맵: [docs/ROADMAP.md](docs/ROADMAP.md), 아키텍처: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## 🚀 30초 시작
+
+```bash
+pip install master-of-hwp
+```
+
+```python
+from master_of_hwp import HwpDocument
+
+doc = HwpDocument.open("보도자료.hwpx")
+print(doc.summary())                         # 구조 요약 (AI 컨텍스트용)
+
+for s, p, text in doc.find_paragraphs("보도"):
+    print(f"§{s}.{p}: {text}")
+
+edited = doc.replace_paragraph(0, 0, "새 문단 내용")
+edited.path.with_suffix(".edited.hwpx").write_bytes(edited.raw_bytes)
+```
+
+---
 
 ---
 
