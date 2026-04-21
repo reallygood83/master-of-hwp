@@ -6,11 +6,10 @@ import json
 import socket
 import threading
 import webbrowser
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from importlib import resources
 
 import click
+
+from master_of_hwp_studio.server import run as run_studio_server
 
 
 @click.group()
@@ -23,28 +22,29 @@ def main() -> None:
 @click.option("--editor-port", default=7700, show_default=True, help="Reserved editor port.")
 @click.option("--open-browser/--no-open-browser", default=True, show_default=True)
 def studio(port: int, editor_port: int, open_browser: bool) -> None:
-    """Start the bundled web UI and print MCP setup guidance."""
+    """Start the Studio HTTP server (static assets + JSON API)."""
     actual_port = _find_free_port(port)
-    web_root = resources.files("master_of_hwp_studio.web")
-    handler = partial(SimpleHTTPRequestHandler, directory=str(web_root))
-    server = ThreadingHTTPServer(("127.0.0.1", actual_port), handler)
+    server = run_studio_server("127.0.0.1", actual_port)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     url = f"http://127.0.0.1:{actual_port}"
     click.echo(f"master-of-hwp Studio: {url}")
-    click.echo(f"Editor port reserved: {editor_port}")
+    click.echo(f"Editor port reserved: {editor_port} (rhwp editor — optional)")
+    click.echo("")
     click.echo(_mcp_config_text())
+    click.echo("")
+    click.echo("Press Ctrl+C to stop.")
     if open_browser:
         webbrowser.open(url)
     try:
-        server.serve_forever()
+        thread.join()
     except KeyboardInterrupt:
         server.shutdown()
 
 
 @main.command("mcp-serve")
 def mcp_serve() -> None:
-    """Run the MCP server over stdio."""
+    """Run the MCP server over stdio (for Claude Desktop)."""
     from master_of_hwp_studio.mcp.server import run_stdio
 
     run_stdio()
