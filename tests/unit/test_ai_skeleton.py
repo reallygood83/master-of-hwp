@@ -74,9 +74,8 @@ def test_delete_operation_apply_raises_not_implemented_with_version() -> None:
 
 
 def test_locate_targets_raises_not_implemented() -> None:
-    intent = EditIntent(action=EditAction.REPLACE_TEXT, target="anything")
-    with pytest.raises(NotImplementedError, match="v0.3"):
-        locate_targets(intent, _fake_doc())
+    intent = EditIntent(action=EditAction.UNKNOWN, target="anything")
+    assert locate_targets(intent, _fake_doc()) == []
 
 
 def test_rollback_transaction_context_manager_swallows_exception() -> None:

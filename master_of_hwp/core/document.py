@@ -44,6 +44,18 @@ class DocumentOpenError(Exception):
 
 
 @dataclass(frozen=True)
+class AIEditResult:
+    """Result of a natural-language edit attempt."""
+
+    status: str
+    intent: object
+    locator: object | None
+    new_doc: HwpDocument
+    fidelity_report: object | None
+    message: str
+
+
+@dataclass(frozen=True)
 class HwpDocument:
     """An in-memory representation of a HWP/HWPX document.
 
@@ -314,6 +326,126 @@ class HwpDocument:
                 raw_bytes=new_bytes,
             )
         raise AssertionError(f"Unhandled source_format: {self.source_format!r}")
+
+    def ai_edit(
+        self,
+        natural_language_request: str,
+        *,
+        provider: object | None = None,
+        dry_run: bool = False,
+        confidence_threshold: float = 0.5,
+    ) -> AIEditResult:
+        """Execute a natural-language paragraph replacement request.
+
+        The offline path works without an API key by using the rule-based
+        parser and first-match locator. LLM providers can be injected for
+        parsing and disambiguation.
+        """
+        from master_of_hwp.ai.intent import EditAction, parse_edit_intent, parse_intent_llm
+        from master_of_hwp.ai.locator import locate_targets
+        from master_of_hwp.fidelity import verify_replace_roundtrip
+
+        intent = (
+            parse_intent_llm(natural_language_request, self, provider)
+            if provider is not None
+            else parse_edit_intent(natural_language_request, self)
+        )
+        if intent.action is not EditAction.REPLACE_TEXT:
+            return AIEditResult(
+                status="refused",
+                intent=intent,
+                locator=None,
+                new_doc=self,
+                fidelity_report=None,
+                message="Only paragraph replacement requests are supported.",
+            )
+        replacement = intent.parameters.get("replace_with")
+        if not replacement:
+            return AIEditResult(
+                status="refused",
+                intent=intent,
+                locator=None,
+                new_doc=self,
+                fidelity_report=None,
+                message="No replacement text was found in the request.",
+            )
+        locators = locate_targets(intent, self, provider)
+        if not locators:
+            return AIEditResult(
+                status="refused",
+                intent=intent,
+                locator=None,
+                new_doc=self,
+                fidelity_report=None,
+                message="No matching paragraph was found.",
+            )
+        locator = locators[0]
+        confidence = min(intent.confidence, locator.confidence)
+        if confidence < confidence_threshold:
+            return AIEditResult(
+                status="refused",
+                intent=intent,
+                locator=locator,
+                new_doc=self,
+                fidelity_report=None,
+                message=f"Confidence {confidence:.2f} is below threshold {confidence_threshold:.2f}.",
+            )
+        if locator.paragraph_index is None:
+            return AIEditResult(
+                status="failed",
+                intent=intent,
+                locator=locator,
+                new_doc=self,
+                fidelity_report=None,
+                message="Located target is not a paragraph.",
+            )
+        if dry_run:
+            return AIEditResult(
+                status="refused",
+                intent=intent,
+                locator=locator,
+                new_doc=self,
+                fidelity_report=None,
+                message="Dry run: edit was planned but not applied.",
+            )
+
+        try:
+            new_doc = self.replace_paragraph(
+                locator.section_index, locator.paragraph_index, replacement
+            )
+            report = verify_replace_roundtrip(
+                self.raw_bytes,
+                self.source_format,
+                locator.section_index,
+                locator.paragraph_index,
+                replacement,
+            )
+        except Exception as exc:
+            return AIEditResult(
+                status="failed",
+                intent=intent,
+                locator=locator,
+                new_doc=self,
+                fidelity_report=None,
+                message=f"Edit failed: {exc}",
+            )
+        if not report.passed:
+            return AIEditResult(
+                status="failed",
+                intent=intent,
+                locator=locator,
+                new_doc=self,
+                fidelity_report=report,
+                message="Fidelity verification failed; edit was rolled back.",
+            )
+        return AIEditResult(
+            status="applied",
+            intent=intent,
+            locator=locator,
+            new_doc=new_doc,
+            fidelity_report=report,
+            message="Edit applied.",
+        )
 
     @property
     def plain_text(self) -> str:

@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from master_of_hwp.ai.intent import EditIntent
+from master_of_hwp.ai.intent import EditAction, EditIntent
 from master_of_hwp.core.document import HwpDocument
 
 
@@ -50,25 +50,96 @@ class ParagraphLocator:
     confidence: float = 0.0
 
 
-def locate_targets(intent: EditIntent, doc: HwpDocument) -> list[ParagraphLocator]:
+def locate_targets(
+    intent: EditIntent,
+    doc: HwpDocument,
+    provider: object | None = None,
+) -> list[ParagraphLocator]:
     """Resolve an `EditIntent` into candidate target locations.
-
-    Phase 2 scaffold: not implemented. The v0.3 implementation will
-    combine substring / regex matching (already available via
-    `HwpDocument.find_paragraphs`) with LLM re-ranking to choose the
-    most likely target(s).
 
     Args:
         intent: A parsed `EditIntent`.
         doc: The document to locate targets within.
+        provider: Optional LLM provider for future disambiguation.
 
     Returns:
         A list of `ParagraphLocator` candidates sorted by confidence
         (highest first). An empty list indicates no match above the
         implementation-defined confidence floor.
 
-    Raises:
-        NotImplementedError: Always, until v0.3 ships.
     """
-    del intent, doc
-    raise NotImplementedError("AI target location pending v0.3")
+    if intent.action is not EditAction.REPLACE_TEXT:
+        return []
+    needle = intent.parameters.get("find") or intent.target
+    if not needle:
+        return []
+    hits = doc.find_paragraphs(needle)
+    if not hits:
+        return []
+    if len(hits) == 1:
+        section_index, paragraph_index, _text = hits[0]
+        return [
+            ParagraphLocator(
+                scope=LocatorScope.PARAGRAPH,
+                section_index=section_index,
+                paragraph_index=paragraph_index,
+                confidence=1.0,
+            )
+        ]
+    if provider is not None:
+        reranked = _rerank_with_provider(intent, hits, provider)
+        if reranked is not None:
+            return [reranked]
+    section_index, paragraph_index, _text = hits[0]
+    return [
+        ParagraphLocator(
+            scope=LocatorScope.PARAGRAPH,
+            section_index=section_index,
+            paragraph_index=paragraph_index,
+            confidence=0.5,
+        )
+    ]
+
+
+def _rerank_with_provider(
+    intent: EditIntent,
+    hits: list[tuple[int, int, str]],
+    provider: object,
+) -> ParagraphLocator | None:
+    from master_of_hwp.ai.providers import LLMProvider
+
+    if not isinstance(provider, LLMProvider):
+        return None
+    candidates = [
+        {"section": section, "paragraph": paragraph, "text": text}
+        for section, paragraph, text in hits
+    ]
+    schema = {
+        "type": "object",
+        "properties": {
+            "section": {"type": "integer"},
+            "paragraph": {"type": "integer"},
+            "confidence": {"type": "number"},
+        },
+        "required": ["section", "paragraph", "confidence"],
+    }
+    try:
+        payload = provider.complete_json(
+            "Choose the best paragraph candidate for this edit.",
+            f"Intent: {intent}\nCandidates: {candidates}",
+            schema,
+        )
+        section_index = int(payload["section"])
+        paragraph_index = int(payload["paragraph"])
+        confidence = float(payload.get("confidence", 0.7))
+    except Exception:
+        return None
+    for section, paragraph, _text in hits:
+        if section == section_index and paragraph == paragraph_index:
+            return ParagraphLocator(
+                scope=LocatorScope.PARAGRAPH,
+                section_index=section,
+                paragraph_index=paragraph,
+                confidence=max(0.0, min(confidence, 1.0)),
+            )
+    return None

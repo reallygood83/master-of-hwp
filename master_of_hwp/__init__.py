@@ -7,7 +7,7 @@ Public API entry points:
 See docs/ROADMAP.md and docs/ARCHITECTURE.md for the platform vision.
 """
 
-from master_of_hwp.core.document import HwpDocument
+from master_of_hwp.core.document import AIEditResult, HwpDocument
 
-__all__ = ["HwpDocument"]
+__all__ = ["AIEditResult", "HwpDocument"]
 __version__ = "0.1.0"

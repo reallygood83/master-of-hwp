@@ -16,7 +16,7 @@ v0.1 scaffolds: only `intent.parse_edit_intent()` and
 `NotImplementedError` with a target version.
 """
 
-from master_of_hwp.ai.intent import EditIntent, parse_edit_intent
+from master_of_hwp.ai.intent import EditIntent, parse_edit_intent, parse_intent_llm
 from master_of_hwp.ai.locator import LocatorScope, ParagraphLocator, locate_targets
 from master_of_hwp.ai.operations import (
     DeleteOperation,
@@ -37,4 +37,5 @@ __all__ = [
     "RollbackTransaction",
     "locate_targets",
     "parse_edit_intent",
+    "parse_intent_llm",
 ]
