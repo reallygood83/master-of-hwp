@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>master-of-hwp</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">📝</span>
+        <span class="title">master-of-hwp</span>
+        <span id="fileName" class="filename">파일 없음</span>
+      </div>
+      <div class="actions">
+        <button id="openBtn" class="btn primary">📂 열기</button>
+        <button id="saveBtn" class="btn" disabled>💾 저장</button>
+        <span id="statusDot" class="dot off" title="서버 상태"></span>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="doc-panel">
+        <div class="panel-header">
+          <span>한글의 달인</span>
+          <span id="docMeta" class="meta">—</span>
+        </div>
+        <div class="editor-wrap">
+          <iframe id="editorFrame" class="editor-frame" src="http://127.0.0.1:7700/"></iframe>
+        </div>
+      </section>
+
+      <section class="chat-panel">
+        <div class="panel-header">
+          <span>AI 작업 패널</span>
+          <span id="selInfo" class="meta">선택된 문단 없음</span>
+          <button id="newChatBtn" class="btn ghost" title="새 대화 열기 (대화 내용 초기화)">🗑 새 대화</button>
+        </div>
+        <div class="provider-row">
+          <label for="providerSelect">모델</label>
+          <select id="providerSelect">
+            <option value="claude">Claude Code</option>
+            <option value="codex">Codex</option>
+            <option value="opencode">OpenCode</option>
+          </select>
+        </div>
+        <div id="chatLog" class="chat-log"></div>
+        <form id="chatForm" class="chat-input">
+          <textarea
+            id="chatText"
+            rows="2"
+            placeholder="예: '드래그한 부분을 공식 문서체로 바꿔줘', '선택한 부분을 요약해줘', '문단 5 뒤에 결론 추가', '저장해줘'"
+          ></textarea>
+          <button type="submit" class="btn primary">보내기 ↵</button>
+        </form>
+      </section>
+    </main>
+
+    <div id="modal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-head">
+          <b>파일 열기</b>
+          <button id="modalClose" class="btn ghost">✕</button>
+        </div>
+        <div class="modal-path">
+          <button id="upBtn" class="btn ghost">⬆</button>
+          <input id="pathInput" type="text" />
+          <button id="goBtn" class="btn">이동</button>
+        </div>
+        <div id="fileList" class="file-list"></div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
