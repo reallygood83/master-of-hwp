@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "master-of-hwp-studio"
-version = "0.3.0"
+version = "0.4.0"
 description = "One-click HWP editing Studio for non-developers — MCP server + web GUI bundled"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,7 +13,7 @@ authors = [
     { name = "moon", email = "jpmjkim23@gmail.com" },
 ]
 dependencies = [
-    "master-of-hwp>=0.2.1",
+    "master-of-hwp>=0.2.2",
     "fastmcp>=3.2.0",
     "uvicorn[standard]>=0.30.0",
     "click>=8.1.0",

@@ -168,17 +168,29 @@ class StudioHandler(BaseHTTPRequestHandler):
 
 
 def _handle_status() -> dict[str, Any]:
-    providers = []
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    import shutil
+
+    providers: list[str] = []
+    provider_sources: dict[str, str] = {}
+    if shutil.which("claude"):
         providers.append("claude")
-    if os.environ.get("OPENAI_API_KEY"):
+        provider_sources["claude"] = "cli"
+    elif os.environ.get("ANTHROPIC_API_KEY"):
+        providers.append("claude")
+        provider_sources["claude"] = "api"
+    if shutil.which("codex"):
         providers.append("codex")
+        provider_sources["codex"] = "cli"
+    elif os.environ.get("OPENAI_API_KEY"):
+        providers.append("codex")
+        provider_sources["codex"] = "api"
     return {
         "ok": True,
         "data": {
-            "version": "0.3.0",
+            "version": "0.4.0",
             "integration": {"data": {"ready": True}},
             "providers": providers or ["claude", "codex"],
+            "provider_sources": provider_sources,
             "editor_url": "http://127.0.0.1:7700/",
         },
     }
@@ -484,14 +496,40 @@ def _rule_based_edit(task_type: str, original: str, instruction: str) -> str:
 
 
 def _build_provider(provider_key: str) -> Any:
-    """Instantiate an LLMProvider for the given key, or return None."""
+    """Instantiate an LLMProvider for the given key, or return None.
+
+    Preference order per provider name:
+    - "claude" / "claude-code": Claude Code CLI (subscription) → Anthropic API
+    - "codex" / "openai":       Codex CLI (subscription) → OpenAI API
+
+    CLI path is preferred because it leverages the user's existing
+    subscription (no API key configuration required).
+    """
     key = provider_key.lower().strip()
     if key in {"claude", "claude-code", "anthropic"}:
-        return _build_anthropic()
-    if key in {"codex", "openai", "gpt"}:
-        return _build_openai()
-    # Unknown provider name — fall back to the default (Claude if available).
-    return _build_anthropic() or _build_openai()
+        return _build_claude_cli() or _build_anthropic()
+    if key in {"codex", "openai", "gpt", "codex-cli"}:
+        return _build_codex_cli() or _build_openai()
+    # Unknown name — try everything in sensible order.
+    return _build_claude_cli() or _build_codex_cli() or _build_anthropic() or _build_openai()
+
+
+def _build_claude_cli() -> Any:
+    try:
+        from master_of_hwp.ai.providers import ClaudeCodeCLIProvider
+
+        return ClaudeCodeCLIProvider()
+    except Exception:  # noqa: BLE001 — includes "not on PATH"
+        return None
+
+
+def _build_codex_cli() -> Any:
+    try:
+        from master_of_hwp.ai.providers import CodexCLIProvider
+
+        return CodexCLIProvider()
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _build_anthropic() -> Any:

@@ -1,9 +1,14 @@
-"""LLM provider protocols and optional Anthropic implementation."""
+"""LLM provider protocols and optional Anthropic / OpenAI / CLI implementations."""
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -136,3 +141,118 @@ class OpenAIProvider:
         if not isinstance(payload, dict):
             raise ValueError("OpenAI response JSON was not an object.")
         return payload
+
+
+class _CLIProviderBase:
+    """Shared machinery for shell-invoked LLM CLIs.
+
+    Rationale: many users already pay for Claude Code CLI (`claude`) or
+    OpenAI's Codex CLI (`codex`) via subscription and would rather not
+    configure an API key. These providers shell out to the CLI binary
+    so calls go through the user's existing subscription.
+    """
+
+    executable: str = ""
+    display_name: str = ""
+
+    def __init__(self, executable: str | None = None, timeout: float = 120.0) -> None:
+        resolved = executable or self.executable
+        discovered = shutil.which(resolved) if resolved else None
+        if not discovered:
+            raise RuntimeError(f"{self.display_name} CLI ({resolved!r}) not found on PATH.")
+        self._executable_path = discovered
+        self._timeout = timeout
+
+    def _run(self, args: list[str], *, stdin: str | None = None) -> str:
+        try:
+            result = subprocess.run(  # noqa: S603 — executable resolved via shutil.which
+                [self._executable_path, *args],
+                input=stdin,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"{self.display_name} CLI timed out after {self._timeout}s") from exc
+        if result.returncode != 0:
+            stderr_tail = result.stderr.strip().splitlines()[-5:]
+            raise RuntimeError(
+                f"{self.display_name} CLI exited {result.returncode}: " + " | ".join(stderr_tail)
+            )
+        return result.stdout.strip()
+
+    def complete_json(
+        self,
+        system: str,
+        user: str,
+        schema: dict[str, Any],
+        *,
+        max_tokens: int = 1024,
+    ) -> dict[str, Any]:
+        """Return structured JSON completion by asking the CLI for JSON."""
+        del schema
+        text = self.complete(  # type: ignore[attr-defined]
+            system,
+            f"{user}\n\nReturn ONLY a JSON object. No markdown, no prose.",
+            max_tokens=max_tokens,
+        )
+        try:
+            payload = json.loads(_extract_json_block(text))
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise ValueError(f"{self.display_name} response was not JSON: {text[:200]}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError(f"{self.display_name} response JSON was not an object.")
+        return payload
+
+
+class ClaudeCodeCLIProvider(_CLIProviderBase):
+    """Invoke the `claude` CLI in print mode (no API key needed)."""
+
+    executable = "claude"
+    display_name = "Claude Code"
+
+    def complete(self, system: str, user: str, *, max_tokens: int = 1024) -> str:
+        del max_tokens  # Claude CLI governs its own token budget.
+        prompt = f"{system}\n\n{user}" if system else user
+        # -p / --print: non-interactive single-shot response.
+        return self._run(["-p", prompt])
+
+
+class CodexCLIProvider(_CLIProviderBase):
+    """Invoke the `codex` CLI in exec mode (no API key needed)."""
+
+    executable = "codex"
+    display_name = "Codex"
+
+    def complete(self, system: str, user: str, *, max_tokens: int = 1024) -> str:
+        del max_tokens
+        prompt = f"{system}\n\n{user}" if system else user
+        # --output-last-message gives a clean response file free of hook logs.
+        with tempfile.NamedTemporaryFile(
+            mode="r", suffix=".txt", delete=False, encoding="utf-8"
+        ) as handle:
+            output_path = Path(handle.name)
+        try:
+            self._run(
+                [
+                    "exec",
+                    "--skip-git-repo-check",
+                    "--output-last-message",
+                    str(output_path),
+                    prompt,
+                ]
+            )
+            return output_path.read_text(encoding="utf-8").strip()
+        finally:
+            with contextlib.suppress(OSError):
+                output_path.unlink(missing_ok=True)
+
+
+def _extract_json_block(text: str) -> str:
+    """Return the first {...} block from a string, else the text itself."""
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return text
+    return text[start : end + 1]
