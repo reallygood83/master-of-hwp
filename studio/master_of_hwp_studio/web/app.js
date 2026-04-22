@@ -225,6 +225,18 @@ async function runBlankGenerate(text) {
       ? String(state.selection.text).trim()
       : '';
 
+  // 선택 영역 스냅샷 — 🔄 대치 시 정확한 범위 교체를 위해 preview 에 그대로 싣는다.
+  // (apply 시점에 에디터 selection 이 사라졌어도 이걸 기준으로 범위 교체 가능)
+  const selectionSnapshot =
+    state.selection?.hasSelection && state.selection?.start && state.selection?.end
+      ? {
+          hasSelection: true,
+          text: state.selection.text,
+          start: state.selection.start,
+          end: state.selection.end,
+        }
+      : null;
+
   const res = await api('/api/ai/preview', {
     provider,
     instruction: text,
@@ -237,11 +249,12 @@ async function runBlankGenerate(text) {
     addBubble('error', `AI 호출 실패: ${res.message || ''}`);
     return;
   }
-  // 빈 노트 모드는 paragraph/selection 없으므로 커서 삽입만 의미가 있음
   addPreviewCard({
     ...res.data,
     title: 'AI 제안 (빈 노트)',
     blank_mode: true,
+    // 선택 스냅샷을 preview 에 붙여서 apply 단계가 범위 교체 가능하게
+    selection: selectionSnapshot,
   });
 }
 
@@ -301,9 +314,16 @@ async function applyEditToEditor(preview, { mode, isTable }) {
     }
 
     // 에디터가 이미 문서 들고 있음 → 현재 위치에 삽입 (기존 내용 보존)
-    const liveStart = editorSelection?.start || editorCursor;
-    const liveEnd = editorSelection?.end || liveStart;
-    const hasLive = !!(editorSelection?.hasSelection && editorSelection?.text);
+    // 🔑 preview.selection (요청 시점 스냅샷) 이 있으면 그걸 우선 사용 →
+    //    AI 대기 중에 사용자가 커서를 옮겨도 정확한 범위 교체 가능.
+    const snapshot = preview.selection || null;
+    const liveStart =
+      snapshot?.start || editorSelection?.start || editorCursor;
+    const liveEnd =
+      snapshot?.end || editorSelection?.end || liveStart;
+    const hasLive =
+      !!(snapshot?.hasSelection && snapshot?.text) ||
+      !!(editorSelection?.hasSelection && editorSelection?.text);
     const inCellNow = !!(liveStart && liveStart.parentParaIndex !== undefined);
 
     if (isTable) {
@@ -365,9 +385,10 @@ async function applyEditToEditor(preview, { mode, isTable }) {
     });
   }
 
-  // --- 문서가 열린 상태: 항상 에디터의 실시간 커서/선택을 기준으로 결정 ---
-  // (state.structure / preview.paragraph_index 같은 서버/캐시 값은 셀 컨텍스트를
-  //  잃어버려서 신뢰 불가. 에디터가 유일한 source of truth.)
+  // --- 문서가 열린 상태: 요청 시점 스냅샷 우선 → 실시간 커서/선택 fallback ---
+  // 사용자가 AI 응답 기다리는 동안 에디터에서 커서를 옮겼어도
+  // 요청 시점의 선택 범위로 정확히 교체할 수 있게 preview.selection 을
+  // 최우선으로 사용한다.
 
   let live = null;
   let cursor = null;
@@ -377,16 +398,17 @@ async function applyEditToEditor(preview, { mode, isTable }) {
     /* 선택 조회 실패 시 기본값 */
   }
   try {
-    // 선택 영역이 없어도 현재 커서 위치는 알아야 한다 (셀 컨텍스트 포함).
     cursor = await sendEditorRequest('getCursor');
   } catch {
     /* 구 버전 에디터는 getCursor 미지원 — 무시 */
   }
 
-  // 우선순위: 실제 선택 > 커서. 둘 다 없으면 null.
-  const liveStart = live?.start || cursor || null;
-  const liveEnd = live?.end || liveStart;
-  const hasLiveSelection = !!(live?.hasSelection && live?.text);
+  const previewSel = preview.selection || null;
+  const liveStart = previewSel?.start || live?.start || cursor || null;
+  const liveEnd = previewSel?.end || live?.end || liveStart;
+  const hasLiveSelection =
+    !!(previewSel?.hasSelection && previewSel?.text) ||
+    !!(live?.hasSelection && live?.text);
   const inCell = !!(liveStart && liveStart.parentParaIndex !== undefined);
   const isMultiParagraph = /\r|\n/.test(newText);
 
