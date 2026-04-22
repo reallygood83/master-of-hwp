@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "master-of-hwp"
-version = "0.2.3"
+version = "0.2.4"
 description = "Read Korean HWP/HWPX documents in Python; edit paragraphs and table cells in HWPX; natural-language edits via Claude Code CLI, Codex CLI, or Anthropic/OpenAI API. AI-friendly API."
 readme = "README.md"
 requires-python = ">=3.11"

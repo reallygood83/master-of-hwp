@@ -85,11 +85,44 @@ mohwp studio
 mohwp mcp-config   # OS별 Claude Desktop 설정 경로 자동 감지해 스니펫 출력
 ```
 
-#### Windows 사용 시 참고
-- 최초 실행 시 **Windows 방화벽 허용** 팝업 → "액세스 허용" 누르세요 (localhost 용)
+#### Windows 사용 시 AI provider 3가지 경로
+
+**🔑 경로 A — API 키 (가장 쉬움)**
+```powershell
+setx ANTHROPIC_API_KEY "sk-ant-..."
+# 또는
+setx OPENAI_API_KEY "sk-..."
+# 새 터미널에서
+mohwp studio
+```
+- Claude Pro/Max 구독 따로 + API 크레딧 따로 충전 (별도 과금)
+- 설정 간단, 즉시 동작
+
+**🐧 경로 B — WSL 전체 통합**
+```powershell
+wsl --install                                 # 1회 설치 (관리자 PowerShell)
+```
+```bash
+# Ubuntu 안에서
+sudo apt install -y python3-pip nodejs npm
+npm install -g @anthropic-ai/claude-code
+pip install master-of-hwp-studio
+claude login                                   # 구독 로그인
+mohwp studio
+```
+→ Windows 브라우저에서 `localhost:<port>` 접속 (WSL2 자동 포워딩)
+- **구독 그대로 사용** (API 크레딧 불필요)
+
+**🔗 경로 C — 하이브리드 (Studio 는 Windows native, CLI 는 WSL)**
+- Windows 에서 `py -m pip install master-of-hwp-studio`
+- WSL 안에 `claude` / `codex` 만 설치
+- Studio 가 자동으로 `wsl -e claude ...` 로 호출 (v0.2.4+)
+- Windows 경로 `C:\...\file.png` → 자동으로 `/mnt/c/.../file.png` 변환
+
+#### Windows 기타 참고
+- 최초 실행 시 **Windows 방화벽 허용** 팝업 → "액세스 허용" (localhost 용)
 - Python 3.11+ 필요. Python 설치 시 "Add Python to PATH" 체크 권장
 - `mohwp` 명령어가 안 보이면 새 터미널 열거나 `py -m master_of_hwp_studio studio`
-- Claude Code CLI 또는 Codex CLI 를 WSL 에서만 쓸 수 있는 경우, PowerShell 에서는 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` API 키 폴백 사용
 
 ---
 

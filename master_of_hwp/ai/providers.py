@@ -158,7 +158,19 @@ class _CLIProviderBase:
 
     def __init__(self, executable: str | None = None, timeout: float = 120.0) -> None:
         resolved = executable or self.executable
+        self._use_wsl = False
+        self._wsl_target = ""
         discovered = shutil.which(resolved) if resolved else None
+        if not discovered and sys.platform == "win32":
+            # Windows fallback: try `wsl <cli>`. Useful when the user installed
+            # Claude Code / Codex CLI inside WSL (npm) for subscription use.
+            wsl_path = shutil.which("wsl") or shutil.which("wsl.exe")
+            if wsl_path and _wsl_has_command(wsl_path, resolved):
+                self._executable_path = wsl_path
+                self._use_wsl = True
+                self._wsl_target = resolved
+                self._timeout = timeout
+                return
         if not discovered:
             raise RuntimeError(f"{self.display_name} CLI ({resolved!r}) not found on PATH.")
         self._executable_path = discovered
@@ -166,10 +178,14 @@ class _CLIProviderBase:
 
     def _run(self, args: list[str], *, stdin: str | None = None) -> str:
         # Windows: .cmd/.bat scripts require shell=True to execute via subprocess.
-        # Native .exe or POSIX binaries work with the list form directly.
+        # WSL fallback: prepend `wsl -e <target>` so args are passed to the
+        # CLI installed inside the Linux subsystem.
         use_shell = False
-        cmd: list[str] | str = [self._executable_path, *args]
-        if sys.platform == "win32":
+        if self._use_wsl:
+            cmd: list[str] | str = [self._executable_path, "-e", self._wsl_target, *args]
+        else:
+            cmd = [self._executable_path, *args]
+        if sys.platform == "win32" and not self._use_wsl:
             ext = Path(self._executable_path).suffix.lower()
             if ext in {".cmd", ".bat"}:
                 use_shell = True
@@ -194,6 +210,21 @@ class _CLIProviderBase:
                 f"{self.display_name} CLI exited {result.returncode}: " + " | ".join(stderr_tail)
             )
         return result.stdout.strip()
+
+    def _wsl_translate_path(self, path: str) -> str:
+        """When bridging through WSL, convert `C:\\x` → `/mnt/c/x` so the CLI
+        inside Linux can open the file. Pass-through when not in WSL mode.
+        """
+        if not self._use_wsl:
+            return path
+        import re
+
+        match = re.match(r"^([A-Za-z]):[\\/](.*)$", path)
+        if match:
+            drive = match.group(1).lower()
+            rest = match.group(2).replace("\\", "/")
+            return f"/mnt/{drive}/{rest}"
+        return path
 
     def complete_json(
         self,
@@ -234,10 +265,12 @@ class ClaudeCodeCLIProvider(_CLIProviderBase):
         attachments: list[str] | None = None,
     ) -> str:
         del max_tokens  # Claude CLI governs its own token budget.
-        # Claude Code CLI can read files when referenced with @path syntax in the prompt.
+        # Claude Code CLI can read files when referenced with @path syntax.
+        # In WSL-bridge mode, translate Windows paths to /mnt/<drive>/... form.
+        attach_paths = [self._wsl_translate_path(p) for p in (attachments or [])]
         attach_block = ""
-        if attachments:
-            refs = "\n".join(f"- @{p}" for p in attachments)
+        if attach_paths:
+            refs = "\n".join(f"- @{p}" for p in attach_paths)
             attach_block = f"\n\n참고 첨부 파일 (내용을 읽어서 활용):\n{refs}"
         prompt = f"{system}\n\n{user}{attach_block}" if system else f"{user}{attach_block}"
         return self._run(["-p", prompt])
@@ -260,16 +293,17 @@ class CodexCLIProvider(_CLIProviderBase):
         attachments: list[str] | None = None,
     ) -> str:
         del max_tokens
-        # Split attachments: images go through `-i`, other files are referenced
-        # by path in the prompt so Codex can Read them via its tool loop.
+        # Split attachments: images → `-i`, others → path reference in prompt.
+        # Translate Windows paths when bridging through WSL.
         image_paths: list[str] = []
         file_refs: list[str] = []
         for path_str in attachments or []:
+            translated = self._wsl_translate_path(path_str)
             p = Path(path_str)
             if p.suffix.lower() in self._IMAGE_SUFFIXES:
-                image_paths.append(str(p))
+                image_paths.append(translated)
             else:
-                file_refs.append(str(p))
+                file_refs.append(translated)
         attach_block = ""
         if file_refs:
             listed = "\n".join(f"- {p}" for p in file_refs)
@@ -299,3 +333,23 @@ def _extract_json_block(text: str) -> str:
     if start == -1 or end == -1 or end <= start:
         return text
     return text[start : end + 1]
+
+
+def _wsl_has_command(wsl_path: str, target: str) -> bool:
+    """Check whether `target` is available as a command inside the default
+    WSL distribution. Used on Windows to bridge Claude/Codex CLI installed
+    inside WSL.
+    """
+    if not target:
+        return False
+    try:
+        result = subprocess.run(  # noqa: S603
+            [wsl_path, "-e", "which", target],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
