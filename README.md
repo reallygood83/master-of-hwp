@@ -1,19 +1,52 @@
-# master-of-hwp
+<div align="center">
 
-[![PyPI version](https://img.shields.io/pypi/v/master-of-hwp.svg)](https://pypi.org/project/master-of-hwp/)
-[![Python](https://img.shields.io/pypi/pyversions/master-of-hwp.svg)](https://pypi.org/project/master-of-hwp/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-84%20passed-brightgreen.svg)](#)
+# 한글의 달인 · master-of-hwp
 
-> Read Korean HWP/HWPX documents in Python, edit paragraphs in HWPX, and expose structure to AI workflows.
+**AI가 한컴오피스 문서(.hwp / .hwpx)를 읽고, 이해하고, 편집하는 오픈소스 플랫폼**
 
-`master-of-hwp` is a Python-first library for opening real `.hwp` and `.hwpx` files, inspecting sections / paragraphs / tables, querying content, and performing immutable paragraph edits. The API is designed to be LLM-friendly: results are plain Python data structures, every mutation returns a new document, and a round-trip fidelity harness validates that edits preserve document structure.
+[![PyPI](https://img.shields.io/pypi/v/master-of-hwp.svg?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/master-of-hwp/)
+[![Studio](https://img.shields.io/pypi/v/master-of-hwp-studio.svg?label=studio&style=for-the-badge&logo=pypi&logoColor=white&color=7c3aed)](https://pypi.org/project/master-of-hwp-studio/)
+[![Python](https://img.shields.io/pypi/pyversions/master-of-hwp.svg?style=for-the-badge&logo=python&logoColor=white)](https://pypi.org/project/master-of-hwp/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
-## Why this exists
+<br />
 
-Korean government, education, and enterprise workflows rely on HWP documents. Most AI tooling can't touch them directly — they get round-tripped through DOCX, shredding tables and formatting. `master-of-hwp` reads the real format, exposes the structure AI needs, and keeps edits byte-level honest.
+<a href="https://www.youtube.com/@%EB%B0%B0%EC%9B%80%EC%9D%98%EB%8B%AC%EC%9D%B8-p5v" target="_blank">
+  <img src="https://img.shields.io/badge/YouTube-배움의_달인-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube 배움의 달인" />
+</a>
+&nbsp;
+<a href="https://x.com/reallygood83" target="_blank">
+  <img src="https://img.shields.io/badge/X-@reallygood83-000000?style=for-the-badge&logo=x&logoColor=white" alt="X @reallygood83" />
+</a>
+&nbsp;
+<a href="https://github.com/reallygood83/master-of-hwp" target="_blank">
+  <img src="https://img.shields.io/badge/GitHub-star-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub star" />
+</a>
 
-## 30-Second Quickstart
+<br /><br />
+
+**[English](README.en.md)** · **[CHANGELOG](CHANGELOG.md)** · **[로드맵](docs/ROADMAP.md)** · **[아키텍처](docs/ARCHITECTURE.md)** · **[기여하기](CONTRIBUTING.md)**
+
+</div>
+
+---
+
+## 🎯 왜 이 프로젝트인가
+
+한국의 공공·교육·업무 현장은 아직도 한글 문서(`.hwp` / `.hwpx`)를 표준으로 씁니다. 하지만 대부분의 AI 도구는 HWP를 직접 다루지 못하고, DOCX로 변환해 편집한 뒤 돌려놓는 과정에서 **서식·표·문단 속성이 망가집니다**.
+
+**한글의 달인(master-of-hwp)** 은 이 문제를 해결합니다:
+
+- ✅ **진짜 포맷 유지** — 변환 없이 원본 HWP/HWPX를 그대로 열고 저장
+- ✅ **구조 이해** — 섹션·문단·표의 구조를 AI에 그대로 노출
+- ✅ **AI-네이티브 편집** — "3번째 문단을 공식 문체로 바꿔줘" 같은 자연어 지시로 수정
+- ✅ **라운드트립 보장** — 편집 → 저장 → 재로딩 후에도 구조 훼손 없음
+
+---
+
+## 🚀 30초 시작
+
+### 📘 개발자용 — Python 라이브러리
 
 ```bash
 pip install master-of-hwp
@@ -22,157 +55,155 @@ pip install master-of-hwp
 ```python
 from master_of_hwp import HwpDocument
 
-doc = HwpDocument.open("report.hwpx")
+doc = HwpDocument.open("보도자료.hwpx")
+print(doc.summary())                         # 구조 요약 (AI 컨텍스트용)
 
-# Inspect
-print(f"{doc.sections_count} sections, {len(list(doc.iter_paragraphs()))} paragraphs")
-print(doc.summary())
+for s, p, text in doc.find_paragraphs("보도"):
+    print(f"§{s}.{p}: {text}")
 
-# Query
-for section, paragraph, text in doc.find_paragraphs("보도자료"):
-    print(f"§{section}.{paragraph}: {text}")
-
-# Edit (HWPX) — immutable: returns a new document
-edited = doc.replace_paragraph(0, 0, "New intro text")
+edited = doc.replace_paragraph(0, 0, "새 문단 내용")
 edited.path.with_suffix(".edited.hwpx").write_bytes(edited.raw_bytes)
 ```
 
-## API at a Glance
-
-| API | Purpose |
-| --- | --- |
-| `HwpDocument.open(path)` | Open `.hwp` / `.hwpx` as an immutable document |
-| `.sections_count` | Number of sections |
-| `.byte_size` | Size of raw bytes |
-| `.section_texts` | Plain text per section |
-| `.section_paragraphs` | Paragraphs per section (nested list) |
-| `.section_tables` | Tables: `[section][table][row][cell][paragraph]` |
-| `.plain_text` | All sections concatenated, format-agnostic normalization |
-| `.iter_paragraphs()` | Yield `(section, paragraph, text)` tuples |
-| `.find_paragraphs(query, regex=, case_sensitive=)` | Substring or regex search |
-| `.summary()` | Compact JSON-serializable overview for LLM context |
-| `.replace_paragraph(s, p, text)` | Return a new document with one paragraph replaced |
-| `.replace_table_cell_paragraph(s, t, r, c, p, text)` | Edit a paragraph inside a table cell (HWPX) |
-| `.ai_edit(request, provider=, dry_run=)` | Natural-language edit pipeline (intent → locate → apply → verify) |
-
-## Supported Formats
-
-| Capability | HWP 5.0 (`.hwp`) | HWPX (`.hwpx`) |
-| --- | --- | --- |
-| Open document | ✅ | ✅ |
-| Count sections | ✅ | ✅ |
-| Extract section text | ✅ | ✅ |
-| Enumerate paragraphs | ✅ | ✅ |
-| Enumerate tables | Best effort* | ✅ |
-| Replace paragraph | Same-length only** | ✅ |
-| Replace table cell paragraph | ❌ (v0.3) | ✅ |
-| Insert / delete | ❌ (v0.3) | ❌ (v0.3) |
-
-<sup>* Minimal heuristic anchored on the `TABLE(0x5B)` record; exact row/cell recovery is pending a richer record-level parser.</sup>
-<sup>** Different-length HWP 5.0 edits require a CFBF stream resize writer, scheduled for v0.3.</sup>
-
-## Natural-Language Editing
-
-```bash
-pip install master-of-hwp[ai]  # adds anthropic SDK
-export ANTHROPIC_API_KEY=sk-ant-...
-```
-
-```python
-from master_of_hwp import HwpDocument
-from master_of_hwp.ai.providers import AnthropicProvider
-
-doc = HwpDocument.open("가정통신문.hwpx")
-result = doc.ai_edit(
-    "첫 번째 문단의 '급식비'를 '수업료'로 바꿔줘",
-    provider=AnthropicProvider(),
-)
-if result.status == "applied":
-    result.new_doc.path.with_suffix(".edited.hwpx").write_bytes(result.new_doc.raw_bytes)
-else:
-    print(result.message)  # refused / failed explanation
-```
-
-Without an API key, a rule-based fallback parser handles simple patterns
-(`바꿔`, `변경`, keyword matches). See `master_of_hwp.ai.providers` for
-the `LLMProvider` Protocol — plug in OpenAI, local Ollama, etc.
-
-## Studio (Non-developer GUI)
-
-For teachers / office workers who want a one-click experience — **rhwp WYSIWYG editor is now bundled** (v0.2+):
+### 🎨 일반 사용자용 — Studio (WYSIWYG GUI)
 
 ```bash
 pip install master-of-hwp-studio
-mohwp studio                    # launches web GUI + MCP server + bundled rhwp editor
-mohwp mcp-config                # prints Claude Desktop config snippet
+mohwp studio
 ```
 
-No Node.js setup required. The rhwp editor runs automatically on `localhost:7700`.
-
-See [`studio/README.md`](studio/README.md).
-
-## Fidelity Harness
-
-```python
-from master_of_hwp.fidelity.harness import verify_replace_roundtrip
-from master_of_hwp.core.document import SourceFormat
-
-report = verify_replace_roundtrip(
-    raw_bytes, SourceFormat.HWPX, section_index=0, paragraph_index=5, new_text="New content"
-)
-assert report.structural_equal
-assert report.edited_paragraph_applied
-```
-
-## Examples
+→ 브라우저 자동 실행 → **rhwp WYSIWYG 에디터 + AI 작업 패널** 한 화면에서 사용.
 
 ```bash
-python examples/01_read_sections.py  samples/public-official/table-vpos-01.hwpx
-python examples/02_extract_tables.py samples/public-official/table-vpos-01.hwpx
-python examples/03_edit_paragraph.py samples/public-official/table-vpos-01.hwpx outputs/edited.hwpx
+mohwp mcp-config   # Claude Desktop 연동 설정 스니펫 출력
 ```
 
-## Roadmap
+---
 
-- **v0.1** ✅ — Read path, HWPX paragraph replacement, fidelity harness, AI scaffold
-- **v0.2** — HWP 5.0 resize writer, paragraph insert/delete, table cell edit
-- **v0.3** — Full agentic edit loop (intent → locate → operate → verify → rollback)
-- **v1.0** — API compatibility contract starts
+## ✨ 주요 기능
 
-Details: [docs/ROADMAP.md](docs/ROADMAP.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+| 기능 | 상세 |
+|---|---|
+| **문서 열기** | `.hwp` / `.hwpx` 파일을 네이티브 포맷 그대로 로드 |
+| **구조 분석** | 섹션·문단·표·셀을 JSON으로 반환 (`summary()`, `section_tables` 등) |
+| **문단/셀 편집** | `replace_paragraph`, `replace_table_cell_paragraph` 불변 API |
+| **AI 자연어 편집** | `doc.ai_edit("내용을 공식체로")` — Claude/Codex/API 모두 지원 |
+| **멀티모달** | 이미지·PDF 첨부 → Claude Code CLI/Codex CLI가 Read/인식 |
+| **템플릿 라이브러리** | 자주 쓰는 양식 저장/불러오기 (`~/.mohwp/templates/`) |
+| **왕복 재현율** | `fidelity.harness` 로 바이트 레벨 검증 |
+| **MCP 서버** | Claude Desktop 에서 `open_document`, `find_paragraphs`, `replace_paragraph` 등 도구 호출 |
 
-## Philosophy
+---
 
-- **Platform-first** — infrastructure, not a template app.
-- **Round-trip fidelity is the contract** — opening and saving must not corrupt structure; proved by a benchmark, not a hope.
-- **Agentic document intelligence** — documents should understand themselves.
-- **Solo OSS · no commercial pressure · quality first** — take the time it needs.
+## 🧠 AI 제공자
 
-## Contributing
+| 제공자 | 사용 방식 | 우선순위 |
+|---|---|---|
+| **Claude Code CLI** | `claude -p "prompt"` (구독 사용, API 키 불필요) | 🥇 1순위 |
+| **Claude API** | `ANTHROPIC_API_KEY` 환경변수 | 🥈 2순위 |
+| **Codex CLI** | `codex exec` (ChatGPT Plus/Pro 구독) | 🥇 1순위 |
+| **OpenAI API** | `OPENAI_API_KEY` 환경변수 | 🥈 2순위 |
+| **Rule-based** | 위 어떤 것도 없을 때 폴백 | 🥉 항상 가능 |
 
-**Contributions are very welcome** — this is an open, community-driven project.
+---
 
-- 🐛 **Bug reports / feature requests:** [open an issue](https://github.com/reallygood83/master-of-hwp/issues)
-- 💻 **Code contributions:** fork → branch → PR. See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, test expectations, and scope.
-- 💬 **Questions / discussion:** [GitHub Discussions](https://github.com/reallygood83/master-of-hwp/discussions)
+## 🏗 아키텍처
 
-Areas we'd love help on:
-- HWP 5.0 CFBF resize writer (v0.3)
-- Paragraph insert / delete operations for both formats
-- Additional LLM providers (OpenAI, Gemini, local Ollama) on top of the `LLMProvider` Protocol
-- Windows / Linux installer for `master-of-hwp-studio`
-- Accessibility improvements to the web GUI
+```
+┌──────────────────────────────────────────┐
+│  사용자 (교사 · 공무원 · 개발자)         │
+└────────────┬─────────────────────────────┘
+             │
+    ┌────────┴────────┐
+    ▼                 ▼
+┌──────────┐    ┌──────────────────┐
+│ Claude   │    │ 한글의 달인 Studio│
+│ Desktop  │    │ (mohwp studio)   │
+└────┬─────┘    └────────┬─────────┘
+     │ MCP              │ HTTP
+     ▼                   ▼
+┌────────────────────────────────┐
+│  master-of-hwp Core API        │
+│  (HwpDocument, ai_edit, ...)   │
+└────────────┬───────────────────┘
+             │
+   ┌─────────┴─────────┐
+   ▼                   ▼
+┌────────────┐   ┌──────────────────┐
+│ olefile +  │   │ rhwp (Rust+WASM) │
+│ zipfile    │   │ WYSIWYG 에디터   │
+└────────────┘   └──────────────────┘
+```
 
-No contribution is too small. Documentation fixes, typo corrections, and sample HWP files are equally valuable.
+- **Python Core** — HWP 5.0 (CFBF) + HWPX (OOXML) 파싱, 편집 프리미티브
+- **rhwp** — [edwardkim/rhwp](https://github.com/edwardkim/rhwp) 의 Rust + WebAssembly WYSIWYG 편집 엔진 (번들 포함)
+- **Studio** — 웹 GUI + MCP 서버 통합 (`mohwp` CLI)
 
-## Acknowledgments
+---
 
-The WYSIWYG editor bundled in `master-of-hwp-studio` is built on **[rhwp](https://github.com/edwardkim/rhwp)** by **[@edwardkim](https://github.com/edwardkim)** — a Rust + WebAssembly HWP parsing / rendering engine. This project would not be possible without their work. If you find `master-of-hwp-studio` useful, please star rhwp too.
+## 📦 패키지
 
-## License
+| 이름 | 용도 | 설치 |
+|---|---|---|
+| [`master-of-hwp`](https://pypi.org/project/master-of-hwp/) | Python Core API | `pip install master-of-hwp` |
+| [`master-of-hwp`](https://pypi.org/project/master-of-hwp/)`[ai]` | + AI provider SDK | `pip install "master-of-hwp[ai]"` |
+| [`master-of-hwp-studio`](https://pypi.org/project/master-of-hwp-studio/) | GUI + MCP + rhwp 번들 | `pip install master-of-hwp-studio` |
 
-MIT — see [LICENSE](LICENSE).
+---
 
-## 한국어 개요
+## 🛣 로드맵
 
-프로젝트의 한국어 소개는 [README.ko.md](README.ko.md) 를 참고하세요.
+- **v0.1** ✅ — 읽기 API + HWPX 문단 편집 + fidelity
+- **v0.2** ✅ — 표 셀 편집 · 자연어 편집 루프 · CLI provider · Studio GUI · rhwp 번들 · 템플릿 라이브러리 · 멀티모달 첨부
+- **v0.3** — HWP 5.0 완전 쓰기 (CFBF resize writer) · 문단 삽입/삭제 · 표 추가/삭제
+- **v0.4** — Agentic edit loop (intent → locate → apply → verify → rollback)
+- **v1.0** — API 호환성 계약 고정
+
+세부: [docs/ROADMAP.md](docs/ROADMAP.md)
+
+---
+
+## 🤝 기여하기
+
+**이 프로젝트는 커뮤니티 기여를 환영합니다.**
+
+- 🐛 **버그 리포트 / 기능 요청**: [Issues](https://github.com/reallygood83/master-of-hwp/issues)
+- 💻 **코드 기여**: fork → branch → PR ([CONTRIBUTING.md](CONTRIBUTING.md))
+- 💬 **질문 / 토론**: [Discussions](https://github.com/reallygood83/master-of-hwp/discussions)
+
+도움 주시면 좋은 영역:
+- HWP 5.0 CFBF 쓰기 엔진 (v0.3)
+- 문단/표 삽입·삭제 연산
+- 추가 LLM provider (Gemini, 로컬 Ollama)
+- Windows/Linux 인스톨러
+- 접근성(a11y) 개선
+
+작은 기여도 환영합니다 — 문서 오탈자, 번역, 샘플 파일 모두 가치 있습니다.
+
+---
+
+## 🙏 감사의 말
+
+이 프로젝트는 [**edwardkim/rhwp**](https://github.com/edwardkim/rhwp) (by [@edwardkim](https://github.com/edwardkim)) 의 Rust + WebAssembly HWP 파싱/렌더링 엔진을 기반으로 합니다. `master-of-hwp-studio` 의 WYSIWYG 에디터는 rhwp 가 있기에 가능합니다. rhwp 도 같이 ⭐ 눌러주세요.
+
+---
+
+## 📄 라이선스
+
+MIT — [LICENSE](LICENSE) 참고.
+
+---
+
+<div align="center">
+
+**만든 사람** — 배움의 달인
+
+<a href="https://www.youtube.com/@%EB%B0%B0%EC%9B%80%EC%9D%98%EB%8B%AC%EC%9D%B8-p5v" target="_blank">📺 YouTube</a>
+&nbsp;·&nbsp;
+<a href="https://x.com/reallygood83" target="_blank">𝕏 @reallygood83</a>
+&nbsp;·&nbsp;
+<a href="https://github.com/reallygood83" target="_blank">GitHub</a>
+
+*도움이 되셨다면 ⭐ 한 번 눌러주시면 큰 힘이 됩니다.*
+
+</div>
