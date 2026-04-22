@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "master-of-hwp-studio"
-version = "0.7.5"
+version = "0.7.6"
 description = "One-click HWP editing Studio for non-developers — MCP server + web GUI bundled"
 readme = "README.md"
 requires-python = ">=3.11"

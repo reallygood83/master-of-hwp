@@ -862,8 +862,57 @@ export class InputHandler {
     const pageLeft = (scrollContent.clientWidth - pageDisplayWidth) / 2;
     const pageX = (contentX - pageLeft) / zoom;
     const pageY = (contentY - pageOffset) / zoom;
+    let hit: any = null;
     try {
-      return this.wasm.hitTest(pageIdx, pageX, pageY);
+      hit = this.wasm.hitTest(pageIdx, pageX, pageY);
+    } catch {
+      return null;
+    }
+    if (!hit) return null;
+    // 셀 안 hit 는 WASM 내부 hit-test 가 float/bbox 계산 오차로 1~2글자 벗어날 수
+    // 있어서 TS 에서 각 char offset 의 렌더 위치를 재조회해 가장 가까운 offset 으로 snap.
+    const corrected = this.refineCellHit(hit, pageX, pageY);
+    return corrected ?? hit;
+  }
+
+  /** 셀 안 hit 를 page 좌표 기준으로 가장 가까운 char offset 으로 보정.
+   *  셀 밖이거나 정보 조회 실패 시 null 반환 (호출자가 원래 hit 사용).
+   */
+  private refineCellHit(hit: any, pageX: number, pageY: number): any | null {
+    try {
+      const sec = Number(hit.sectionIndex);
+      const ppi = Number(hit.parentParaIndex);
+      const ci = Number(hit.controlIndex);
+      const cellIdx = Number(hit.cellIndex);
+      const cellPara = Number(hit.cellParaIndex ?? hit.paragraphIndex ?? 0);
+      if (!Number.isFinite(ppi) || !Number.isFinite(ci) || !Number.isFinite(cellIdx)) {
+        return null; // 셀 안 hit 가 아님
+      }
+      const len = this.wasm.getCellParagraphLength(sec, ppi, ci, cellIdx, cellPara);
+      if (!Number.isFinite(len) || len <= 0) return null;
+      let bestOffset = Number(hit.charOffset ?? 0);
+      let bestDist = Infinity;
+      // 너무 많은 WASM 호출을 피하려고 최대 256자까지만 샘플.
+      const sampleMax = Math.min(256, len);
+      for (let off = 0; off <= sampleMax; off++) {
+        try {
+          const rect = this.wasm.getCursorRectInCell(sec, ppi, ci, cellIdx, cellPara, off);
+          const cx = rect.x + (rect.width ?? 0) / 2;
+          const cy = rect.y + (rect.height ?? 0) / 2;
+          const dx = cx - pageX;
+          const dy = cy - pageY;
+          // y 차이는 라인 매칭 비중 높게, x 는 글자 위치 선택
+          const dist = Math.abs(dy) * 2 + Math.abs(dx);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestOffset = off;
+          }
+        } catch {
+          /* 해당 offset 에서 rect 조회 실패 시 건너뜀 */
+        }
+      }
+      if (bestOffset === Number(hit.charOffset)) return null; // 이미 최선
+      return { ...hit, charOffset: bestOffset };
     } catch {
       return null;
     }
