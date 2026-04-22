@@ -627,6 +627,15 @@ window.addEventListener('message', async (e) => {
           reply(undefined, resultError);
           break;
         }
+        // For multi-paragraph inserts (newText contains newlines), existing
+        // paragraphs below may render at stale Y positions. A canvas reload
+        // re-paginates and guarantees correct layout. Single-char edits skip
+        // this to avoid flicker.
+        if (String(newText || '').includes('\n')) {
+          try { canvasView?.loadDocument(); } catch (relErr) {
+            console.warn('[applyEdit] canvas reload failed:', relErr);
+          }
+        }
         eventBus.emit('document-changed');
         emitSelectionChanged();
         reply(result);
@@ -758,6 +767,13 @@ window.addEventListener('message', async (e) => {
         if (resultError) {
           reply(undefined, resultError);
           break;
+        }
+        // 🔑 Full page re-layout after a structural change (new table inserted).
+        // Without this, the virtual scroll / paginator keeps stale Y offsets
+        // and existing text paragraphs render on top of each other (자간/줄간격
+        // 망가진 것처럼 보임).
+        try { canvasView?.loadDocument(); } catch (relErr) {
+          console.warn('[applyEditTable] canvas reload failed:', relErr);
         }
         eventBus.emit('document-changed');
         emitSelectionChanged();
