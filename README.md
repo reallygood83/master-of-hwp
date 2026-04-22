@@ -67,16 +67,29 @@ edited.path.with_suffix(".edited.hwpx").write_bytes(edited.raw_bytes)
 
 ### 🎨 일반 사용자용 — Studio (WYSIWYG GUI)
 
+**macOS / Linux:**
 ```bash
 pip install master-of-hwp-studio
+mohwp studio
+```
+
+**Windows (PowerShell):**
+```powershell
+py -m pip install master-of-hwp-studio
 mohwp studio
 ```
 
 → 브라우저 자동 실행 → **rhwp WYSIWYG 에디터 + AI 작업 패널** 한 화면에서 사용.
 
 ```bash
-mohwp mcp-config   # Claude Desktop 연동 설정 스니펫 출력
+mohwp mcp-config   # OS별 Claude Desktop 설정 경로 자동 감지해 스니펫 출력
 ```
+
+#### Windows 사용 시 참고
+- 최초 실행 시 **Windows 방화벽 허용** 팝업 → "액세스 허용" 누르세요 (localhost 용)
+- Python 3.11+ 필요. Python 설치 시 "Add Python to PATH" 체크 권장
+- `mohwp` 명령어가 안 보이면 새 터미널 열거나 `py -m master_of_hwp_studio studio`
+- Claude Code CLI 또는 Codex CLI 를 WSL 에서만 쓸 수 있는 경우, PowerShell 에서는 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` API 키 폴백 사용
 
 ---
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import socket
+import sys
 import threading
 import webbrowser
 from functools import partial
@@ -95,8 +96,21 @@ def mcp_config() -> None:
     click.echo(_mcp_config_text())
 
 
+def _claude_desktop_config_path() -> str:
+    """Return OS-specific Claude Desktop config path for display.
+
+    Reference: https://modelcontextprotocol.io/quickstart/user
+    """
+    if sys.platform == "darwin":
+        return "~/Library/Application Support/Claude/claude_desktop_config.json"
+    if sys.platform == "win32":
+        return "%APPDATA%\\Claude\\claude_desktop_config.json"
+    # Linux / others
+    return "~/.config/Claude/claude_desktop_config.json"
+
+
 def _mcp_config_text() -> str:
-    config_path = "~/Library/Application Support/Claude/claude_desktop_config.json"
+    config_path = _claude_desktop_config_path()
     snippet = {
         "mcpServers": {
             "master-of-hwp": {

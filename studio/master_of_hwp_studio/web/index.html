@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>한글의 달인</title>
-    <link rel="stylesheet" href="/app.css" />
+    <link rel="stylesheet" href="/app.css?v=20260422c" />
   </head>
   <body>
     <header class="topbar">
@@ -15,8 +15,11 @@
       </div>
       <div class="actions">
         <button id="helpBtn" class="btn ghost" title="사용 방법 보기">❔ 도움말</button>
+        <button id="templatesBtn" class="btn" title="템플릿 라이브러리">📋 템플릿</button>
+        <button id="newDocBtn" class="btn" title="빈 새 문서 열기">📄 새 문서</button>
         <button id="openBtn" class="btn primary">파일 열기</button>
         <button id="saveBtn" class="btn" disabled>저장</button>
+        <button id="saveAsBtn" class="btn ghost" disabled title="다른 이름으로 저장 (경로 직접 지정)">💾 다른 이름</button>
         <span id="statusDot" class="dot off" title="서버 상태"></span>
       </div>
     </header>
@@ -46,7 +49,14 @@
           </select>
         </div>
         <div id="chatLog" class="chat-log"></div>
+        <div id="attachmentsBar" class="attachments-bar hidden"></div>
         <form id="chatForm" class="chat-input">
+          <button
+            id="attachBtn"
+            type="button"
+            class="btn ghost attach-btn"
+            title="파일 첨부 (이미지·문서 등)"
+          >📎</button>
           <textarea
             id="chatText"
             rows="2"
@@ -69,6 +79,48 @@
           <button id="goBtn" class="btn">이동</button>
         </div>
         <div id="fileList" class="file-list"></div>
+      </div>
+    </div>
+
+    <div id="saveAsModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-head">
+          <b>💾 다른 이름으로 저장</b>
+          <button id="saveAsClose" class="btn ghost">✕</button>
+        </div>
+        <div class="modal-path">
+          <button id="saveAsUpBtn" class="btn ghost">⬆</button>
+          <input id="saveAsPathInput" type="text" placeholder="폴더 경로" />
+          <button id="saveAsGoBtn" class="btn">이동</button>
+        </div>
+        <div id="saveAsFolderList" class="file-list"></div>
+        <div class="save-as-footer">
+          <label for="saveAsFilename" class="save-as-label">파일명</label>
+          <input id="saveAsFilename" type="text" placeholder="파일명.hwp" />
+          <button id="saveAsConfirmBtn" class="btn primary">💾 저장</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="templatesModal" class="modal hidden">
+      <div class="modal-card templates-card">
+        <div class="modal-head">
+          <b>📋 템플릿 라이브러리</b>
+          <button id="templatesClose" class="btn ghost">✕</button>
+        </div>
+        <div class="templates-body">
+          <div class="templates-intro">
+            자주 쓰는 양식(가정통신문·기안문·보고서 등)을 저장해 두고 한 번에 불러오세요.
+            현재 열린 문서를 저장하거나, 아래 목록에서 클릭해 불러올 수 있습니다.
+          </div>
+          <div class="templates-actions">
+            <button id="templateSaveCurrentBtn" class="btn primary" disabled title="현재 에디터 문서를 템플릿으로 저장">💾 현재 문서를 템플릿으로 저장</button>
+            <button id="templateSaveFromFileBtn" class="btn" title="디스크에 있는 HWP/HWPX 파일을 선택해서 바로 템플릿으로 저장">📂 기존 파일에서 저장</button>
+          </div>
+          <div id="templatesList" class="templates-list">
+            <div class="templates-empty">불러오는 중…</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -140,6 +192,6 @@
       </div>
     </div>
 
-    <script src="/app.js"></script>
+    <script src="/app.js?v=20260422c"></script>
   </body>
 </html>

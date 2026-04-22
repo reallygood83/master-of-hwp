@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -164,14 +165,26 @@ class _CLIProviderBase:
         self._timeout = timeout
 
     def _run(self, args: list[str], *, stdin: str | None = None) -> str:
+        # Windows: .cmd/.bat scripts require shell=True to execute via subprocess.
+        # Native .exe or POSIX binaries work with the list form directly.
+        use_shell = False
+        cmd: list[str] | str = [self._executable_path, *args]
+        if sys.platform == "win32":
+            ext = Path(self._executable_path).suffix.lower()
+            if ext in {".cmd", ".bat"}:
+                use_shell = True
+                import shlex
+
+                cmd = shlex.join([self._executable_path, *args])
         try:
             result = subprocess.run(  # noqa: S603 — executable resolved via shutil.which
-                [self._executable_path, *args],
+                cmd,
                 input=stdin,
                 capture_output=True,
                 text=True,
                 timeout=self._timeout,
                 check=False,
+                shell=use_shell,
             )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(f"{self.display_name} CLI timed out after {self._timeout}s") from exc
@@ -212,10 +225,21 @@ class ClaudeCodeCLIProvider(_CLIProviderBase):
     executable = "claude"
     display_name = "Claude Code"
 
-    def complete(self, system: str, user: str, *, max_tokens: int = 1024) -> str:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        max_tokens: int = 1024,
+        attachments: list[str] | None = None,
+    ) -> str:
         del max_tokens  # Claude CLI governs its own token budget.
-        prompt = f"{system}\n\n{user}" if system else user
-        # -p / --print: non-interactive single-shot response.
+        # Claude Code CLI can read files when referenced with @path syntax in the prompt.
+        attach_block = ""
+        if attachments:
+            refs = "\n".join(f"- @{p}" for p in attachments)
+            attach_block = f"\n\n참고 첨부 파일 (내용을 읽어서 활용):\n{refs}"
+        prompt = f"{system}\n\n{user}{attach_block}" if system else f"{user}{attach_block}"
         return self._run(["-p", prompt])
 
 
@@ -225,24 +249,43 @@ class CodexCLIProvider(_CLIProviderBase):
     executable = "codex"
     display_name = "Codex"
 
-    def complete(self, system: str, user: str, *, max_tokens: int = 1024) -> str:
+    _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+
+    def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        max_tokens: int = 1024,
+        attachments: list[str] | None = None,
+    ) -> str:
         del max_tokens
-        prompt = f"{system}\n\n{user}" if system else user
-        # --output-last-message gives a clean response file free of hook logs.
+        # Split attachments: images go through `-i`, other files are referenced
+        # by path in the prompt so Codex can Read them via its tool loop.
+        image_paths: list[str] = []
+        file_refs: list[str] = []
+        for path_str in attachments or []:
+            p = Path(path_str)
+            if p.suffix.lower() in self._IMAGE_SUFFIXES:
+                image_paths.append(str(p))
+            else:
+                file_refs.append(str(p))
+        attach_block = ""
+        if file_refs:
+            listed = "\n".join(f"- {p}" for p in file_refs)
+            attach_block = f"\n\n참고 첨부 파일 (내용을 읽어서 활용):\n{listed}"
+        prompt = f"{system}\n\n{user}{attach_block}" if system else f"{user}{attach_block}"
+
         with tempfile.NamedTemporaryFile(
             mode="r", suffix=".txt", delete=False, encoding="utf-8"
         ) as handle:
             output_path = Path(handle.name)
         try:
-            self._run(
-                [
-                    "exec",
-                    "--skip-git-repo-check",
-                    "--output-last-message",
-                    str(output_path),
-                    prompt,
-                ]
-            )
+            args = ["exec", "--skip-git-repo-check"]
+            for img in image_paths:
+                args.extend(["-i", img])
+            args.extend(["--output-last-message", str(output_path), prompt])
+            self._run(args)
             return output_path.read_text(encoding="utf-8").strip()
         finally:
             with contextlib.suppress(OSError):
