@@ -708,7 +708,8 @@ window.addEventListener('message', async (e) => {
                 }
                 const newCellPara = createdInCell.cellParaIdx;
 
-                // 셀 내부 신규 표의 셀에 텍스트 채우기
+                // 셀 내부 신규 표의 각 셀에 텍스트 채우기
+                // (newCellPara 의 controls[0] 이 신규 내부 표)
                 for (let r = 0; r < rows; r++) {
                   const row = cells[r];
                   if (!Array.isArray(row)) continue;
@@ -718,12 +719,12 @@ window.addEventListener('message', async (e) => {
                     if (!txt) continue;
                     const innerCellIdx = r * cols + c;
                     try {
-                      // 새 표의 각 셀은 parent=원래 셀의 문단(newCellPara), control=0, cell=innerCellIdx 로 접근
-                      // 하지만 create_table_in_cell 이 만든 표는 중첩 셀 계층이므로
-                      // 하위 셀 편집은 별도 API가 필요 → 일단 스킵 (TODO: insertTextInNestedCell)
-                      void innerCellIdx; void txt;
+                      w.insertTextInNestedCell(
+                        sec, parentPara, controlIdx, cellIdx, newCellPara,
+                        0, innerCellIdx, 0, 0, txt,
+                      );
                     } catch (cellErr) {
-                      console.warn('[applyEditTable] nested cell text skip', r, c, cellErr);
+                      console.warn('[applyEditTable] insertTextInNestedCell failed', r, c, cellErr);
                     }
                   }
                 }

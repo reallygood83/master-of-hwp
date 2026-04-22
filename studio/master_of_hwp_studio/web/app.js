@@ -329,7 +329,6 @@ async function applyEditToEditor(preview, { mode, isTable }) {
     if (isTable) {
       // 셀 안이면 중첩 표 API 호출 (현재: 골격만 생성, 내용 채우기는 후속 작업)
       if (inCellNow) {
-        addBubble('system', 'ℹ 셀 안에 중첩 표를 만들었습니다. 칸 내용은 직접 입력해 주세요.');
         return sendEditorRequest('applyEditTable', {
           section: Number(liveStart.sectionIndex ?? 0),
           startPara: 0, endPara: 0, startChar: 0, endChar: 0,

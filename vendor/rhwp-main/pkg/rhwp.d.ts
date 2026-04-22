@@ -854,6 +854,12 @@ export class HwpDocument {
      */
     insertTextInHeaderFooter(section_idx: number, is_header: boolean, apply_to: number, hf_para_idx: number, char_offset: number, text: string): string;
     /**
+     * 중첩 표 (셀 안의 셀) 내부 문단에 텍스트 삽입.
+     *
+     * 반환: JSON `{"ok":true,"charOffset":<N>}`
+     */
+    insertTextInNestedCell(section_idx: number, parent_para_idx: number, outer_ctrl_idx: number, outer_cell_idx: number, outer_cell_para_idx: number, inner_ctrl_idx: number, inner_cell_idx: number, inner_cell_para_idx: number, char_offset: number, text: string): string;
+    /**
      * 논리적 오프셋으로 텍스트를 삽입한다.
      *
      * logical_offset: 텍스트 문자 + 인라인 컨트롤을 각각 1로 세는 위치.
@@ -1478,6 +1484,7 @@ export interface InitOutput {
     readonly hwpdocument_insertTextInCellByPath: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly hwpdocument_insertTextInFootnote: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly hwpdocument_insertTextInHeaderFooter: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
+    readonly hwpdocument_insertTextInNestedCell: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number, number, number];
     readonly hwpdocument_insertTextLogical: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly hwpdocument_logicalToTextOffset: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly hwpdocument_measureWidthDiagnostic: (a: number, b: number, c: number) => [number, number, number, number];

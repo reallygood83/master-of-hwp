@@ -3810,6 +3810,42 @@ export class HwpDocument {
         }
     }
     /**
+     * 중첩 표 (셀 안의 셀) 내부 문단에 텍스트 삽입.
+     *
+     * 반환: JSON `{"ok":true,"charOffset":<N>}`
+     * @param {number} section_idx
+     * @param {number} parent_para_idx
+     * @param {number} outer_ctrl_idx
+     * @param {number} outer_cell_idx
+     * @param {number} outer_cell_para_idx
+     * @param {number} inner_ctrl_idx
+     * @param {number} inner_cell_idx
+     * @param {number} inner_cell_para_idx
+     * @param {number} char_offset
+     * @param {string} text
+     * @returns {string}
+     */
+    insertTextInNestedCell(section_idx, parent_para_idx, outer_ctrl_idx, outer_cell_idx, outer_cell_para_idx, inner_ctrl_idx, inner_cell_idx, inner_cell_para_idx, char_offset, text) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.hwpdocument_insertTextInNestedCell(this.__wbg_ptr, section_idx, parent_para_idx, outer_ctrl_idx, outer_cell_idx, outer_cell_para_idx, inner_ctrl_idx, inner_cell_idx, inner_cell_para_idx, char_offset, ptr0, len0);
+            var ptr2 = ret[0];
+            var len2 = ret[1];
+            if (ret[3]) {
+                ptr2 = 0; len2 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
      * 논리적 오프셋으로 텍스트를 삽입한다.
      *
      * logical_offset: 텍스트 문자 + 인라인 컨트롤을 각각 1로 세는 위치.
